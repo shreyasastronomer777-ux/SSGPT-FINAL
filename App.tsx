@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { type Part } from '@google/genai';
 import GeneratorForm from './components/GeneratorForm';
@@ -8,7 +7,7 @@ import ChatbotInterface from './components/ChatbotInterface';
 import MyPapers from './components/MyPapers';
 import Settings from './components/Settings';
 import { type FormData, type QuestionPaperData, type User, type Page, type Theme, UploadedImage } from './types';
-import { generateQuestionPaper, RateLimitError } from './services/geminiService';
+import { generateQuestionPaper } from './services/geminiService';
 import { generateHtmlFromPaperData } from './services/htmlGenerator';
 import { authService } from './services/authService';
 import PublicLandingPage from './components/PublicLandingPage';
@@ -32,7 +31,6 @@ function App() {
   const [theme, setTheme] = useState<Theme>('light');
   const [page, setPage] = useState<Page>('teacherDashboard');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isQueued, setIsQueued] = useState<boolean>(false);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activePaper, setActivePaper] = useState<QuestionPaperData | null>(null);
@@ -133,35 +131,20 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
-  // Wrapper to handle retry logic
-  const executeGeneration = async (action: () => Promise<void>, retryContext: any) => {
+  // Wrapper to handle execution logic
+  const executeGeneration = async (action: () => Promise<void>) => {
       setIsLoading(true);
       setError(null);
-      setIsQueued(false);
-      let wasRateLimited = false;
 
       try {
           await action();
       } catch (e) {
-          if (e instanceof RateLimitError) {
-              console.warn("Rate limited, queueing...", e.message);
-              setIsQueued(true);
-              wasRateLimited = true;
-              // Auto-retry after 2 minutes (120000ms)
-              setTimeout(() => {
-                  executeGeneration(action, retryContext);
-              }, 120000);
-          } else {
-              console.error(e);
-              let errorMessage = 'An unknown error occurred. Please try again.';
-              if (e instanceof Error) errorMessage = e.message;
-              setError(errorMessage);
-          }
+          console.error(e);
+          let errorMessage = 'An unknown error occurred. Please try again.';
+          if (e instanceof Error) errorMessage = e.message;
+          setError(errorMessage);
       } finally {
-          // Only turn off loading if we are NOT queued/retrying
-          if (!wasRateLimited) {
-             setIsLoading(false);
-          }
+          setIsLoading(false);
       }
   };
 
@@ -181,7 +164,7 @@ function App() {
             setPapers(authService.getPapers());
         }
         setPage('edit');
-    }, { type: 'generate', data: formData });
+    });
 
   }, [currentUser]);
 
@@ -347,7 +330,7 @@ function App() {
 
   const renderContent = () => {
     if (isLoading) {
-        return <div className="flex items-center justify-center flex-1"><Loader isQueued={isQueued} /></div>;
+        return <div className="flex items-center justify-center flex-1"><Loader /></div>;
     }
     if (error) {
       return (
