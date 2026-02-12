@@ -11,7 +11,7 @@ const escapeHtml = (unsafe: string | undefined): string => {
 }
 
 const formatSpecialText = (text: string = ''): string => {
-    // We preserve $ and \ characters for LaTeX to work correctly with KaTeX.
+    // Preserve backslashes for LaTeX and convert newlines to <br/>
     return text.trim().replace(/\n/g, '<br/>');
 };
 

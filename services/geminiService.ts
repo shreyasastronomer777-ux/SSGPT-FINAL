@@ -4,7 +4,6 @@ import { generateHtmlFromPaperData } from "./htmlGenerator";
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    // User requested simplified error message
     throw new Error("Internal Error Occurred");
 };
 
@@ -69,25 +68,26 @@ ${sourceMode === 'strict' ? "Generate questions ONLY from provided materials." :
     : '';
 
   const finalPrompt = `
-You are an expert Question Paper Designer for the Indian K-12 education system.
-Your task is to generate a professional, high-quality exam paper in JSON format.
+You are a professional typesetter and Question Paper Designer for the Indian K-12 system.
+Generate a high-quality exam paper in JSON format.
 
-**CRITICAL MATHEMATICAL FORMATTING (STRICT REQUIREMENT):**
-1. **LATEX FOR ALL MATH:** You MUST use proper LaTeX syntax for ALL mathematical expressions, formulas, fractions, variables, and symbols.
-2. **DELIMITERS:** Use single dollar signs ($...$) for inline math.
-3. **FRACTIONS:** NEVER use plain text like "3/4" or "25/35". Use $\\frac{3}{4}$ and $\\frac{25}{35}$.
-4. **SYMBOLS:** Use proper LaTeX symbols: $\\times$ for multiply, $\\div$ for divide, $\\pm$, $\\sqrt{x}$, $\\pi$, $\\theta$, etc.
-5. **MCQ OPTIONS:** If options contain numbers or math, they MUST be wrapped in LaTeX $...$.
-6. **DECIMALS:** Use LaTeX for decimals if they are part of an equation, e.g., $0.5x$.
+**STRICT LATEX FORMATTING RULES:**
+1. **FRACTIONS:** NEVER use plain text fractions like "3/5", "1/2", "x/y". You MUST use $\\frac{a}{b}$ syntax for every single fraction in the question text and every single option.
+2. **DELIMITERS:** Wrap ALL math, numbers, variables, and expressions in single dollar signs: $...$.
+3. **SYMBOLS:** Use proper LaTeX: $\\times$ (multiplication), $\\div$ (division), $\\sqrt{x}$ (square root), $\\pi$, $\\approx$, etc.
+4. **OPTIONS:** If an option is a number or fraction, it MUST be wrapped in $...$. E.g., "(a) $\\frac{3}{10}$".
+5. **EXPONENTS:** Use $x^2$ instead of x2 or x^2.
 
-**Specifications:**
-- Subject: ${subject}
-- Class/Grade: ${className}
-- Topics: ${topics}
+**Example Format:**
+Question: "Calculate the sum of $\\frac{1}{2}$ and $\\frac{1}{4}$."
+Options: ["$\\frac{3}{4}$", "$\\frac{1}{2}$", "$\\frac{3}{8}$", "$\\frac{1}{4}$"]
+
+**Paper Specifications:**
+- Subject: ${subject}, Class: ${className}, Topics: ${topics}
 - Language: ${language}
 ${sourceMaterialInstruction}
 
-- Required Question Mix:
+- Required Mix:
 ${questionRequests}
 
 Return ONLY a JSON array of objects with fields: type, questionText, options, answer, marks, difficulty, taxonomy.
@@ -165,7 +165,7 @@ Return ONLY a JSON array of objects with fields: type, questionText, options, an
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
   if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const analysisPrompt = `Analyze and structure the following exam text into the required JSON schema. Convert all math to professional LaTeX $...$. Text: ${text}`;
+  const analysisPrompt = `Analyze and structure the following exam text into JSON. CRITICAL: Rewrite all plain text fractions (e.g. 1/2) into LaTeX $\\frac{1}{2}$ format. Text: ${text}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -186,7 +186,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   try {
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this content into JSON. Convert all math formulas to LaTeX $...$." }] }],
+        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this content into JSON. CRITICAL: Convert all math and fractions into LaTeX $...$ using \\frac{num}{den}." }] }],
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -239,7 +239,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     const chat = ai.chats.create({
         model: "gemini-2.5-flash",
         config: {
-            systemInstruction: "You are an expert editor. For any math, ALWAYS use LaTeX $...$. Guide the user in refining the exam paper.",
+            systemInstruction: "You are an expert editor. For ANY math or fractions, ALWAYS use professional LaTeX $...$. Guide the user in refining the exam paper.",
             tools: [{ functionDeclarations: [] }]
         }
     });
@@ -262,7 +262,7 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     try {
         const response = await ai.models.generateContent({ 
             model: "gemini-2.5-flash", 
-            contents: `Translate this exam paper into ${targetLanguage}. Maintain LaTeX strings $...$ exactly. Return JSON.`, 
+            contents: `Translate this exam paper into ${targetLanguage}. Keep LaTeX strings $...$ exactly the same. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });
         const translatedContent = JSON.parse(response.text);

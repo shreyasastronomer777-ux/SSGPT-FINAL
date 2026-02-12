@@ -56,7 +56,14 @@ const SpeakIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmln
 const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m6 9 6 6 6-6"/></svg>);
 
 const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Collect academic details to generate an exam paper.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, topics: { type: Type.STRING }, timeAllowed: { type: Type.STRING }, questionDistribution: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING }, taxonomy: { type: Type.STRING } }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING } }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
-const systemInstruction = `You are SSGPT, an AI for educators. Help users create exams. For ALL math, use LaTeX $...$. GUIDE: ask for Subject, Class, Topics, Distribution.`;
+const systemInstruction = `You are SSGPT, an AI for educators. Help users create high-quality exams. 
+
+**MATH FORMATTING:** 
+- For ALL mathematical content, including fractions, variables, and formulas, you MUST use professional LaTeX wrapped in single dollar signs: $...$. 
+- NEVER use plain text fractions like "1/2". ALWAYS use $\\frac{1}{2}$.
+- This applies to both your chat responses and the paper details you collect.
+
+**GUIDE:** Proactively ask for Subject, Class, Topics, and Question Distribution.`;
 
 const TypingIndicator: React.FC = () => (
     <div className="flex items-end gap-3 justify-start animate-slide-in-left">
@@ -72,18 +79,28 @@ const TypingIndicator: React.FC = () => (
 );
 
 function parseMarkdownToHTML(text: string) {
+    // Basic Markdown with LaTeX preservation
     let html = text.trim()
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+    
+    // Code blocks
     html = html.replace(/```([\s\S]*?)```/g, (match, code) => `<pre class="bg-slate-100 dark:bg-slate-900 p-2 rounded-md overflow-x-auto my-2"><code>${code.trim()}</code></pre>`);
+    
+    // Bold / Italic
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // Lists
     html = html.replace(/^([ \t]*)([\*\-]) (.*$)/gm, (match, indent, bullet, content) => `${indent}<ul><li>${content}</li></ul>`);
     html = html.replace(/<\/ul>\s*<ul>/g, '');
     html = html.replace(/^([ \t]*)\d+\. (.*$)/gm, (match, indent, content) => `${indent}<ol><li>${content}</li></ol>`);
     html = html.replace(/<\/ol>\s*<ol>/g, '');
+    
+    // Newlines
     html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />');
+    
     return html;
 }
 
@@ -151,10 +168,13 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       if (selectedModel.useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
       const newChat = ai.chats.create({ model: selectedModel.modelName, config });
       setChat(newChat);
-      const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
-      const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
-      setMessages([newBotMessage]);
-      for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
+      const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
+      if (!importedFilesRaw) {
+        const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
+        const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
+        setMessages([newBotMessage]);
+        for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
+      }
     } catch (error) { setMessages([{ id: 'bot-error', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   }, [selectedModelId]);
@@ -165,7 +185,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   useEffect(() => {
     const timer = setTimeout(() => {
         triggerMathRendering(chatContainerRef.current);
-    }, 100);
+    }, 150);
     return () => clearTimeout(timer);
   }, [messages, isBotTyping]);
 
