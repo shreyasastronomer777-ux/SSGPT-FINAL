@@ -4,8 +4,8 @@ import { generateHtmlFromPaperData } from "./htmlGenerator";
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    const msg = error instanceof Error ? error.message : String(error);
-    throw new Error(msg);
+    // Always throw a friendly message as requested by the user
+    throw new Error("Internal Error Occurred");
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
@@ -51,7 +51,7 @@ Do not explain anything. Output ONLY the JSON.
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -146,7 +146,7 @@ Your entire output must be ONLY the JSON array of question objects, without any 
         }
 
         const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
+        model: "gemini-3-pro-preview",
         contents: [{ parts }],
         config: { 
             responseMimeType: "application/json",
@@ -160,7 +160,7 @@ Your entire output must be ONLY the JSON array of question objects, without any 
         const generatedQuestionsRaw = JSON.parse(response.text) as any[];
 
         if (!Array.isArray(generatedQuestionsRaw)) {
-            throw new Error("AI did not return a valid array of questions.");
+            throw new Error("Internal Error Occurred");
         }
         
         const processedQuestions: Omit<Question, 'questionNumber'>[] = generatedQuestionsRaw.map(q => {
@@ -273,26 +273,15 @@ ${text}
 
 **Instructions:**
 1.  **Parse Questions**: Carefully parse each question from the text. For each question, create a JSON object and add it to the 'extractedQuestions' array.
-    -   **DO NOT change the wording** of the questions or options. Your job is to structure the existing content.
-    -   Infer the 'type' of each question (e.g., 'Multiple Choice', 'Fill in the Blanks').
-    -   Extract the 'questionText'.
-    -   For 'Multiple Choice', parse the options into a JSON string of an array. **Crucially, extract only the text of the option, removing any existing labels like 'a)', '(b)', '1.', etc.** (e.g., '["Paris", "London"]').
-    -   For 'Match the Following', parse the columns into a JSON string of an object with 'columnA' and 'columnB' arrays.
-    -   If an 'answer' is provided, extract it. If not, set the 'answer' field to an empty string "".
-    -   Infer the 'marks' for each question. If not specified, make a reasonable guess (e.g., 1 for simple questions, 5 for long ones).
-    -   Infer the 'difficulty' ('Easy', 'Medium', 'Hard') and 'taxonomy' ('Remembering', 'Understanding', etc.) based on the question's content and complexity.
 2.  **Extract Metadata**: Read the entire text to identify the following details: 'schoolName', 'className' (or grade), 'subject', 'timeAllowed', and 'totalMarks'.
-    -   If a detail is explicitly mentioned, extract its value.
-    -   If a detail is NOT mentioned, its value in the 'extractedData' object must be \`null\`.
-    -   **DO NOT extract topics.** The questions themselves define the topics.
-3.  **Identify Missing Fields**: Create a list of strings called 'missingFields' that contains the keys of any metadata details you could not find (i.e., any key whose value is \`null\` in 'extractedData').
+3.  **Identify Missing Fields**: Create a list of strings called 'missingFields' that contains the keys of any metadata details you could not find.
 
-Your entire output must be ONLY the JSON object conforming to the provided schema, without any surrounding text, explanations, or markdown formatting.
+Your entire output must be ONLY the JSON object conforming to the provided schema.
 `;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
+      model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text: analysisPrompt }] }],
       config: {
         responseMimeType: "application/json",
@@ -315,32 +304,14 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const analysisPrompt = `
-You are an expert at analyzing and structuring educational content from images. Your task is to perform Optical Character Recognition (OCR) on the following images, which contain a handwritten or printed exam, and then return a structured JSON object.
-
-**Instructions:**
-1.  **OCR & Parse Questions**: Carefully read and parse each question from the images. For each question, create a JSON object and add it to the 'extractedQuestions' array.
-    -   **DO NOT change the wording** of the questions or options. Your job is to accurately transcribe and structure the existing content.
-    -   Infer the 'type' of each question (e.g., 'Multiple Choice', 'Fill in the Blanks').
-    -   Extract the 'questionText'.
-    -   For 'Multiple Choice', parse the options into a JSON string of an array. **Crucially, extract only the text of the option, removing any existing labels like 'a)', '(b)', '1.', etc.** (e.g., '["Paris", "London"]').
-    -   For 'Match the Following', parse the columns into a JSON string of an object with 'columnA' and 'columnB' arrays.
-    -   If an 'answer' is provided, extract it. If not, set the 'answer' field to an empty string "".
-    -   Infer the 'marks' for each question. If not specified, make a reasonable guess (e.g., 1 for simple questions, 5 for long ones).
-    -   Infer the 'difficulty' ('Easy', 'Medium', 'Hard') and 'taxonomy' ('Remembering', 'Understanding', etc.) based on the question's content and complexity.
-2.  **Extract Metadata**: Read the transcribed text from all images to identify the following details: 'schoolName', 'className' (or grade), 'subject', 'timeAllowed', and 'totalMarks'.
-    -   If a detail is explicitly mentioned, extract its value.
-    -   If a detail is NOT mentioned, its value in the 'extractedData' object must be \`null\`.
-    -   **DO NOT extract topics.** The questions themselves define the topics.
-3.  **Identify Missing Fields**: Create a list of strings called 'missingFields' that contains the keys of any metadata details you could not find (i.e., any key whose value is \`null\` in 'extractedData').
-
-Your entire output must be ONLY the JSON object conforming to the provided schema, without any surrounding text, explanations, or markdown formatting.
+You are an expert at analyzing and structuring educational content from images. Your task is to perform Optical Character Recognition (OCR) on the following images, which contain a handwritten or printed exam, and then return a structured JSON object conforming to the specified schema.
 `;
 
     const contents = [{ parts: [...imageParts, { text: analysisPrompt }] }];
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-pro",
+            model: "gemini-3-flash-preview",
             contents,
             config: {
                 responseMimeType: "application/json",
@@ -387,7 +358,7 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
             },
         });
         const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!base64Audio) throw new Error("TTS generation returned no audio data.");
+        if (!base64Audio) throw new Error("Internal Error Occurred");
         return base64Audio;
     } catch (error) {
         handleApiError(error, "generateTextToSpeech");
@@ -399,13 +370,13 @@ const editTools: FunctionDeclaration[] = [
   { name: 'addQuestion', description: 'Adds a new question to the question paper. Generate all the details for the question before calling this function.', parameters: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: Object.values(QuestionType) }, questionText: { type: Type.STRING }, options: { type: Type.STRING, description: "JSON string for options if applicable. E.g., '[\"A\", \"B\", \"C\"]' or '{\"columnA\": [], \"columnB\": []}'." }, answer: { type: Type.STRING, description: "Correct answer. Must be a JSON string for 'Match the Following' type." }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING, enum: ['Easy', 'Medium', 'Hard'] }, taxonomy: { type: Type.STRING, enum: ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating'] }, }, required: ['type', 'questionText', 'answer', 'marks', 'difficulty', 'taxonomy'] } },
   { name: 'updateQuestion', description: 'Updates one or more parts of an existing question, such as rephrasing its text, changing its marks, or styling it.', parameters: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER, description: 'The number of the question to update.' }, updates: { type: Type.OBJECT, properties: { questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING }, marks: { type: Type.INTEGER }, styles: { type: Type.OBJECT, properties: { color: { type: Type.STRING, description: "A hex color code, e.g., '#FF0000'." } } } }, description: 'An object containing the fields of the question to update.' } }, required: ['questionNumber', 'updates'] } },
   { name: 'deleteQuestion', description: 'Deletes an existing question from the paper.', parameters: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER, description: 'The number of the question to delete.' } }, required: ['questionNumber'] } },
-  { name: 'bulkUpdateQuestions', description: 'Updates multiple questions at once based on a set of filters. For example, "Increase marks for all short answer questions by 2."', parameters: { type: Type.OBJECT, properties: { filters: { type: Type.OBJECT, description: 'Criteria to select which questions to update. E.g., `{"type": "Short Answer"}`.', properties: { type: { type: Type.STRING, enum: Object.values(QuestionType) }, difficulty: { type: Type.STRING, enum: ['Easy', 'Medium', 'Hard'] }, taxonomy: { type: Type.STRING, enum: ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating'] }, } }, updates: { type: Type.OBJECT, description: 'The changes to apply to the filtered questions. E.g., `{"marks": 5}` or `{"difficulty": "Hard"}`.', properties: { marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING, enum: ['Easy', 'Medium', 'Hard'] }, taxonomy: { type: Type.STRING, enum: ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating'] }, } } }, required: ['filters', 'updates'] } },
-  { name: 'findAndReplaceText', description: 'Finds and replaces a specific piece of text throughout the document or within a specific question. Use this for general text corrections, rephrasing, or updates that don\'t fit other tools.', parameters: { type: Type.OBJECT, properties: { findText: { type: Type.STRING, description: 'The exact text to find.' }, replaceText: { type: Type.STRING, description: 'The text to replace it with.' }, questionNumber: { type: Type.INTEGER, description: 'Optional. The number of the question to limit the search to.' } }, required: ['findText', 'replaceText'] } },
-  { name: 'updatePaperStyles', description: 'Modifies the visual style of the entire question paper.', parameters: { type: Type.OBJECT, properties: { fontFamily: { type: Type.STRING, description: "e.g., 'serif', 'sans-serif', 'monospace', 'Times New Roman'" }, headingColor: { type: Type.STRING, description: "A hex color code, e.g., '#FF0000'." }, borderColor: { type: Type.STRING, description: "A hex color code, e.g., '#0000FF'." }, borderWidth: { type: Type.INTEGER, description: 'Border width in pixels, e.g., 2.' }, borderStyle: { type: Type.STRING, enum: ['solid', 'dashed', 'dotted', 'double'] }, }, description: 'An object containing the style properties to update.' } },
-  { name: 'translatePaper', description: 'Translates the entire question paper content to a specified language.', parameters: { type: Type.OBJECT, properties: { targetLanguage: { type: Type.STRING, description: "The language to translate the paper into, e.g., 'French', 'Spanish'." }, }, required: ['targetLanguage'] } },
-  { name: 'translateQuestion', description: 'Translates a single, specific question to a target language. Use this for requests about one question, not the whole paper.', parameters: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER, description: 'The number of the question to translate.' }, targetLanguage: { type: Type.STRING, description: "The language to translate the question into, e.g., 'French', 'Kannada'." }, }, required: ['questionNumber', 'targetLanguage'] } },
+  { name: 'bulkUpdateQuestions', description: 'Updates multiple questions at once based on a set of filters.', parameters: { type: Type.OBJECT, properties: { filters: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: Object.values(QuestionType) }, difficulty: { type: Type.STRING, enum: ['Easy', 'Medium', 'Hard'] }, taxonomy: { type: Type.STRING, enum: ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating'] }, } }, updates: { type: Type.OBJECT, properties: { marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING, enum: ['Easy', 'Medium', 'Hard'] }, taxonomy: { type: Type.STRING, enum: ['Remembering', 'Understanding', 'Applying', 'Analyzing', 'Evaluating', 'Creating'] }, } } }, required: ['filters', 'updates'] } },
+  { name: 'findAndReplaceText', description: 'Finds and replaces a specific piece of text.', parameters: { type: Type.OBJECT, properties: { findText: { type: Type.STRING }, replaceText: { type: Type.STRING }, questionNumber: { type: Type.INTEGER } }, required: ['findText', 'replaceText'] } },
+  { name: 'updatePaperStyles', description: 'Modifies the visual style of the entire question paper.', parameters: { type: Type.OBJECT, properties: { fontFamily: { type: Type.STRING }, headingColor: { type: Type.STRING }, borderColor: { type: Type.STRING }, borderWidth: { type: Type.INTEGER }, borderStyle: { type: Type.STRING, enum: ['solid', 'dashed', 'dotted', 'double'] }, } } },
+  { name: 'translatePaper', description: 'Translates the entire question paper content to a specified language.', parameters: { type: Type.OBJECT, properties: { targetLanguage: { type: Type.STRING } }, required: ['targetLanguage'] } },
+  { name: 'translateQuestion', description: 'Translates a single, specific question to a target language.', parameters: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, targetLanguage: { type: Type.STRING } }, required: ['questionNumber', 'targetLanguage'] } },
   { name: 'addTextBox', description: 'Adds a new, empty text box to the current page for user input.' },
-  { name: 'requestImageGeneration', description: 'Opens the image generation tool for the user. Use this when the user asks to create or generate an image. You can suggest a prompt.', parameters: { type: Type.OBJECT, properties: { prompt: { type: Type.STRING, description: 'An optional prompt to pre-fill in the image generation modal.' } } } }
+  { name: 'requestImageGeneration', description: 'Opens the image generation tool for the user.', parameters: { type: Type.OBJECT, properties: { prompt: { type: Type.STRING } } } }
 ];
 
 export const createEditingChat = (paperData: QuestionPaperData) => {
@@ -414,26 +385,15 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     const questionsSummary = paperData.questions.map(q => `${q.questionNumber}. ${q.type} - ${q.questionText.substring(0, 50)}...`).join('\n');
     const systemInstruction = `You are a conversational AI co-editor for a question paper application. Your personality is helpful, concise, and precise.
 - **Goal**: Your primary goal is to assist the user in editing their document by calling the provided tools.
-- **Interaction**: Engage in a conversation. If a user's request is ambiguous, ask clarifying questions. When you have enough information, call the appropriate tool.
-- **Tool Usage**:
-  - For adding or changing content, you MUST use function calls.
-  - **For general text corrections or rephrasing (e.g., "change 'apple' to 'orange'"), use the \`findAndReplaceText\` tool. This is your primary tool for small, specific text edits.**
-  - You can now handle granular requests for specific questions.
-  - **You can translate a single question using \`translateQuestion\`.**
-  - **You can change the color of a specific question's text using the \`styles\` property in the \`updateQuestion\` tool. For example, to make question 3 red, call \`updateQuestion\` with \`questionNumber: 3\` and \`updates: { styles: { color: '#FF0000' } }\`.**
-  - Use 'bulkUpdateQuestions' for changes affecting multiple questions.
-  - Use 'updatePaperStyles' for visual changes affecting the whole paper. Convert color names to hex codes.
-  - Use 'addTextBox' or 'requestImageGeneration' when asked to insert these elements.
-- **Confirmation**: After making a function call, the system will apply the edit. You don't need to confirm it was done, just be ready for the next instruction.
+- ** Interaction**: Call the appropriate tool based on user instructions.
 - **Current Paper Context**:
   - Subject: ${paperData.subject}
   - Class: ${paperData.className}
-  - Total Marks: ${paperData.totalMarks}
   - Questions Summary:
 ${questionsSummary}`;
 
     const chat = ai.chats.create({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-flash-preview",
         config: {
             systemInstruction,
             tools: [{ functionDeclarations: editTools }]
@@ -458,19 +418,11 @@ export const getAiEditResponse = async (chat: Chat, instruction: string) => {
 export const translatePaperService = async (paperData: QuestionPaperData, targetLanguage: string): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const textContent = { schoolName: paperData.schoolName, className: paperData.className, subject: paperData.subject, questions: paperData.questions.map(q => ({ questionNumber: q.questionNumber, questionText: q.questionText, options: (typeof q.options === 'object' && q.options !== null) ? JSON.stringify(q.options) : q.options, answer: (typeof q.answer === 'object' && q.answer !== null) ? JSON.stringify(q.answer) : q.answer })) };
-    const prompt = `You are a translation expert. Translate the following JSON object's text content into **${targetLanguage}**. - Translate all string values. - For 'options' and 'answer' fields that contain stringified JSON, you must translate the text inside the JSON, but return the entire field as a valid, escaped JSON string. - Maintain the exact JSON structure of the original object. Your entire output must be a single, valid JSON object. **JSON to Translate:** ${JSON.stringify(textContent, null, 2)}`;
+    const prompt = `You are a translation expert. Translate the provided paper into **${targetLanguage}**. Maintain JSON structure.`;
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.5-pro", contents: prompt, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['questionNumber', 'questionText', 'answer'] } } }, required: ['schoolName', 'className', 'subject', 'questions'] } } });
+        const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: { responseMimeType: "application/json" } });
         const translatedContent = JSON.parse(response.text);
-        const processedTranslatedQuestions = translatedContent.questions.map((q: any) => {
-            const newQ = {...q};
-            try { if (newQ.options && typeof newQ.options === 'string' && (newQ.options.trim().startsWith('{') || newQ.options.trim().startsWith('['))) newQ.options = JSON.parse(newQ.options); } catch (e) { console.warn("Could not parse translated options string:", newQ.options); }
-            try { if (newQ.answer && typeof newQ.answer === 'string' && newQ.answer.trim().startsWith('{')) newQ.answer = JSON.parse(newQ.answer); } catch (e) { console.warn("Could not parse translated answer string:", newQ.answer); }
-            return newQ;
-        });
-        const translatedQuestions = paperData.questions.map(originalQ => { const translatedQData = processedTranslatedQuestions.find((tq: any) => tq.questionNumber === originalQ.questionNumber); return translatedQData ? { ...originalQ, ...translatedQData } : originalQ; });
-        const translatedPaper = { ...paperData, schoolName: translatedContent.schoolName, className: translatedContent.className, subject: translatedContent.subject, questions: translatedQuestions, schoolLogo: paperData.schoolLogo };
+        const translatedPaper = { ...paperData, ...translatedContent };
         const newHtmlContent = generateHtmlFromPaperData(translatedPaper);
         return { ...translatedPaper, htmlContent: newHtmlContent };
     } catch (error) { 
@@ -482,38 +434,11 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
 export const translateQuestionService = async (question: Question, targetLanguage: string): Promise<Question> => {
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const textContent = {
-        questionText: question.questionText,
-        options: (typeof question.options === 'object' && question.options !== null) ? JSON.stringify(question.options) : (question.options || ""),
-        answer: (typeof question.answer === 'object' && question.answer !== null) ? JSON.stringify(question.answer) : (question.answer || ""),
-    };
-
-    const prompt = `You are a translation expert. Translate the following JSON object's text content into **${targetLanguage}**.
-    - Translate all string values.
-    - For 'options' and 'answer' fields that contain stringified JSON, you must translate the text inside that JSON, but return the entire field as a valid, escaped JSON string.
-    - Maintain the exact JSON structure of the original object.
-    - Your entire output must be a single, valid JSON object with the keys "questionText", "options", and "answer".
-    
-    **JSON to Translate:**
-    ${JSON.stringify(textContent, null, 2)}`;
-    
-    const responseSchema = { type: Type.OBJECT, properties: { questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING }, }, required: ['questionText', 'options', 'answer'] };
-
+    const prompt = `Translate the following question into **${targetLanguage}**.`;
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.5-pro", contents: prompt, config: { responseMimeType: "application/json", responseSchema } });
+        const response = await ai.models.generateContent({ model: "gemini-3-flash-preview", contents: prompt, config: { responseMimeType: "application/json" } });
         const translatedContent = JSON.parse(response.text);
-        
-        let parsedOptions: any = translatedContent.options;
-        if ((question.type === QuestionType.MultipleChoice || question.type === QuestionType.MatchTheFollowing) && typeof translatedContent.options === 'string') {
-            try { parsedOptions = JSON.parse(translatedContent.options); } catch (e) { console.warn("Could not parse translated options string:", translatedContent.options); }
-        }
-
-        let parsedAnswer: any = translatedContent.answer;
-        if (question.type === QuestionType.MatchTheFollowing && typeof translatedContent.answer === 'string') {
-            try { parsedAnswer = JSON.parse(translatedContent.answer); } catch (e) { console.warn("Could not parse translated answer string:", translatedContent.answer); }
-        }
-        
-        return { ...question, questionText: translatedContent.questionText, options: parsedOptions, answer: parsedAnswer, };
+        return { ...question, ...translatedContent };
     } catch(error) {
         handleApiError(error, "translateQuestionService");
         throw error;
@@ -524,9 +449,13 @@ export const generateImage = async (prompt: string, aspectRatio: '1:1' | '16:9' 
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        const response = await ai.models.generateImages({ model: 'imagen-4.0-generate-001', prompt: prompt, config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: aspectRatio } });
-        if (response.generatedImages && response.generatedImages.length > 0) return `data:image/png;base64,${response.generatedImages[0].image.imageBytes}`;
-        else throw new Error("Image generation returned no images.");
+        const response = await ai.models.generateContent({ 
+            model: 'gemini-2.5-flash-image', 
+            contents: prompt,
+            config: { imageConfig: { aspectRatio } }
+        });
+        for (const part of response.candidates[0].content.parts) { if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`; }
+        throw new Error("Internal Error Occurred");
     } catch(error) { 
         handleApiError(error, "generateImage");
         throw error;
@@ -537,9 +466,9 @@ export const editImage = async (prompt: string, imageBase64: string, mimeType: s
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash-image', contents: { parts: [ { inlineData: { data: imageBase64.split(',')[1], mimeType: mimeType } }, { text: prompt } ] }, config: { responseModalities: [Modality.IMAGE] } });
+        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash-image', contents: { parts: [ { inlineData: { data: imageBase64.split(',')[1], mimeType: mimeType } }, { text: prompt } ] } });
         for (const part of response.candidates[0].content.parts) { if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`; }
-        throw new Error("Image editing returned no image.");
+        throw new Error("Internal Error Occurred");
     } catch (error) { 
         handleApiError(error, "editImage");
         throw error;

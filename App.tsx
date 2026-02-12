@@ -43,7 +43,6 @@ function App() {
   const [imagesToAnalyze, setImagesToAnalyze] = useState<Part[] | null>(null);
   const [publicPaper, setPublicPaper] = useState<QuestionPaperData | null>(null);
   
-  // New State for Image Editor
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
 
   useEffect(() => {
@@ -64,7 +63,7 @@ function App() {
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         } catch (error) {
           console.error("Failed to load paper from URL hash:", error);
-          alert("The shared paper link is invalid or corrupted.");
+          alert("Internal Error Occurred");
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         }
       }
@@ -131,7 +130,6 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
-  // Wrapper to handle execution logic
   const executeGeneration = async (action: () => Promise<void>) => {
       setIsLoading(true);
       setError(null);
@@ -140,9 +138,7 @@ function App() {
           await action();
       } catch (e) {
           console.error(e);
-          let errorMessage = 'An unknown error occurred. Please try again.';
-          if (e instanceof Error) errorMessage = e.message;
-          setError(errorMessage);
+          setError('Internal Error Occurred');
       } finally {
           setIsLoading(false);
       }
@@ -169,7 +165,6 @@ function App() {
   }, [currentUser]);
 
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
-    // Analysis usually happens in a sub-component, but we handle the transition here
     setIsLoading(true);
     setError(null);
 
@@ -243,7 +238,7 @@ function App() {
 
     const handleStudentViewPaperFromUrl = (url: string) => {
         if (!url.includes('#paper/')) {
-            alert("Invalid SSGPT paper link. Please paste the full link.");
+            alert("Internal Error Occurred");
             return;
         }
         try {
@@ -259,7 +254,7 @@ function App() {
             setPage('edit');
         } catch (e) {
             console.error("Failed to process pasted link:", e);
-            alert("The provided paper link is invalid or corrupted.");
+            alert("Internal Error Occurred");
         }
     };
     
@@ -323,7 +318,6 @@ function App() {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
-  // Handle the Pro Image Editor Modal
   if (selectedImageForEdit) {
       return <ProImageEditor image={selectedImageForEdit} onClose={() => setSelectedImageForEdit(null)} />;
   }
@@ -352,7 +346,6 @@ function App() {
       );
     }
     
-    // Teacher pages
     if(currentUser.role === 'teacher') {
         switch (page) {
           case 'teacherDashboard':
@@ -383,7 +376,6 @@ function App() {
         }
     }
     
-    // Student pages
     if(currentUser.role === 'student') {
         switch (page) {
             case 'studentDashboard':

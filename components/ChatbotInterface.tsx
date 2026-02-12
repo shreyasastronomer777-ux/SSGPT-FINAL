@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
@@ -28,22 +27,22 @@ const MODELS: AIModelConfig[] = [
     { 
         id: 'ssgpt-1', 
         name: 'SSGPT 1', 
-        modelName: 'gemini-2.5-flash', 
-        description: 'Fast & Efficient (Flash)', 
+        modelName: 'gemini-3-flash-preview', 
+        description: 'Fast & Efficient', 
         icon: '⚡' 
     },
     { 
         id: 'ssgpt-1.5', 
         name: 'SSGPT 1.5', 
         modelName: 'gemini-3-pro-preview', 
-        description: 'Advanced Reasoning (Pro)', 
+        description: 'Advanced Reasoning', 
         icon: '✨' 
     },
     { 
         id: 'ssgpt-7', 
         name: 'SSGPT 7', 
         modelName: 'gemini-3-pro-preview', 
-        description: 'Deep Thinking (Reasoning)', 
+        description: 'Deep Thinking Mode', 
         icon: '🧠',
         useThinking: true
     },
@@ -56,22 +55,8 @@ const SendIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg xmln
 const SpeakIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>);
 const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m6 9 6 6 6-6"/></svg>);
 
-const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Call this function ONLY when all necessary details for creating a question paper have been collected. This is a specialized tool and should not be used for general queries.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING, description: "The name of the school or institution." }, className: { type: Type.STRING, description: "The grade or class level (e.g., '10th Grade')." }, subject: { type: Type.STRING, description: "The subject of the exam (e.g., 'Physics')." }, topics: { type: Type.STRING, description: "A comma-separated list of topics to be covered." }, timeAllowed: { type: Type.STRING, description: "The total time allowed for the exam, e.g., '2 hours 30 minutes'." }, sourceMaterials: { type: Type.STRING, description: "Optional text, URLs, or references provided by the user that should be used as a primary source for generating questions." }, sourceMode: { type: Type.STRING, enum: ['strict', 'reference'], description: "Determines how the source materials are used. 'strict' means only use the provided materials. 'reference' means use them as a primary guide but allow other relevant questions. Default to 'reference' if unsure." }, questionDistribution: { type: Type.ARRAY, description: "The breakdown of questions by type, count, marks, difficulty, and taxonomy.", items: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: Object.values(QuestionType) }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING, enum: Object.values(Difficulty) }, taxonomy: { type: Type.STRING, enum: Object.values(Taxonomy) }, }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING, description: "The language the paper should be written in (e.g., 'English')." }, }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
-const systemInstruction = `You are SSGPT, a state-of-the-art, multi-purpose AI assistant integrated into an application for educators. You are a versatile and powerful AI, like Gemini, capable of handling a wide array of tasks.
-
-**Your Core Capabilities:**
-1.  **General Assistant:** You can answer questions, write code, brainstorm ideas, summarize text, translate languages, and perform any other general AI task a user might ask for. Be helpful, creative, and knowledgeable.
-2.  **Expert Exam Creator:** You have a special tool, \`generatePaper\`, which is your primary function within this specific application. You must guide educators through the process of creating a question paper. If the user uploads images of handwritten questions, analyze them using OCR and start the conversation to build a question paper from them.
-3.  **Section Support:** If the user asks for sections (e.g., "Section A: Physics, Section B: Chemistry"), explicitly capture this intent. When calling \`generatePaper\`, you must mention the sectioning requirements in the 'topics' or 'questionDistribution' logic, usually by passing custom instructions if available, or just structuring the request such that the backend knows how to separate them. (Note: The current tool definition handles basic distribution, so detailed sectioning might need to be described in 'topics' effectively).
-
-**Interaction Guidelines:**
-- **Persona:** Be friendly, professional, and proactive. Start with a warm welcome and make it clear you can help with anything, not just making papers.
-- **Primary Goal:** Your main objective is to assist the user. If they want to generate a paper, you MUST collaboratively gather all the required details: School Name, Class, Subject, Topics, Time Allowed, a complete Question Distribution, and Language. Also, ask if they have any source materials to provide. If they provide source materials, you should also ask them if the questions should be **strictly** from the materials or if the materials should be used as a **reference**.
-- **Tool Usage:**
-  - Use the \`generatePaper\` function ONLY when you have gathered ALL the necessary information.
-  - If the user provides text or attaches a file (including images), treat it as potential source material and include it in the 'sourceMaterials' argument when calling the 'generatePaper' tool. Set 'sourceMode' to 'strict' or 'reference' based on their preference. Default to 'reference' if they don't specify.
-  - For any other request (e.g., "What is photosynthesis?", "Write a python script", "Give me ideas for a class project"), provide a direct text-based answer. Do NOT use the \`generatePaper\` tool for these.
-- **Initiating Conversation:** Start by introducing yourself and highlighting your dual capabilities. For example: "Hello! I'm SSGPT, your AI assistant. I can help you with a variety of tasks, or we can jump right into creating the perfect question paper. What's on your mind today?"`;
+const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Call this function ONLY when all necessary details for creating a question paper have been collected.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, topics: { type: Type.STRING }, timeAllowed: { type: Type.STRING }, sourceMaterials: { type: Type.STRING }, sourceMode: { type: Type.STRING, enum: ['strict', 'reference'] }, questionDistribution: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: Object.values(QuestionType) }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING, enum: Object.values(Difficulty) }, taxonomy: { type: Type.STRING, enum: Object.values(Taxonomy) }, }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING }, }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
+const systemInstruction = `You are SSGPT, a helpful AI assistant. You help educators create exams or answer general questions. Call 'generatePaper' once all info is gathered.`;
 
 const blobToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onloadend = () => resolve((reader.result as string).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
 function parseMarkdownToHTML(text: string) { let html = text.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); html = html.replace(/```([\s\S]*?)```/g, (match, code) => `<pre><code>${code.trim()}</code></pre>`); html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); html = html.replace(/\*(.*?)\*/g, '<em>$1</em>'); html = html.replace(/^([ \t]*)([\*\-]) (.*$)/gm, (match, indent, bullet, content) => `${indent}<ul><li>${content}</li></ul>`); html = html.replace(/<\/ul>\s*<ul>/g, ''); html = html.replace(/^([ \t]*)\d+\. (.*$)/gm, (match, indent, content) => `${indent}<ol><li>${content}</li></ol>`); html = html.replace(/<\/ol>\s*<ol>/g, ''); html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />'); return html; }
@@ -88,11 +73,7 @@ const ModelSelector: React.FC<{ selectedModelId: string; onSelect: (id: string) 
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
+        const handleClickOutside = (event: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false); };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
@@ -107,7 +88,6 @@ const ModelSelector: React.FC<{ selectedModelId: string; onSelect: (id: string) 
                 <span>{selectedModel.name}</span>
                 <ChevronDownIcon className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
-
             {isOpen && (
                 <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border dark:border-slate-700 p-2 z-50 animate-zoom-in">
                     <div className="space-y-1">
@@ -115,19 +95,11 @@ const ModelSelector: React.FC<{ selectedModelId: string; onSelect: (id: string) 
                             <button
                                 key={model.id}
                                 onClick={() => { onSelect(model.id); setIsOpen(false); }}
-                                className={`w-full text-left p-2 rounded-lg flex items-center gap-3 transition-colors ${
-                                    selectedModelId === model.id 
-                                        ? 'bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500/30' 
-                                        : 'hover:bg-slate-100 dark:hover:bg-slate-700'
-                                }`}
+                                className={`w-full text-left p-2 rounded-lg flex items-center gap-3 transition-colors ${selectedModelId === model.id ? 'bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500/30' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                             >
-                                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg shadow-sm">
-                                    {model.icon}
-                                </div>
+                                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg shadow-sm">{model.icon}</div>
                                 <div>
-                                    <p className={`text-sm font-bold ${selectedModelId === model.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>
-                                        {model.name}
-                                    </p>
+                                    <p className={`text-sm font-bold ${selectedModelId === model.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>{model.name}</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400">{model.description}</p>
                                 </div>
                             </button>
@@ -145,33 +117,17 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]); const [currentUserText, setCurrentUserText] = useState(''); const [currentAiText, setCurrentAiText] = useState(''); const userUtteranceRef = useRef(''); const aiUtteranceRef = useRef(''); const conversationEndRef = useRef<HTMLDivElement>(null);
   const [useSearch, setUseSearch] = useState(false); const [useThinking, setUseThinking] = useState(false);
   const audioPlaybackSource = useRef<AudioBufferSourceNode | null>(null);
-  
-  // Model Selection State
   const [selectedModelId, setSelectedModelId] = useState('ssgpt-1');
 
   const initChat = useCallback(async () => {
     setIsBotTyping(true); setMessages([]);
     try {
       if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
-      
       const selectedModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const config: any = {
-          systemInstruction,
-          tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }]
-      };
-
-      // Enable Thinking only if model supports it and it's requested (SSGPT 7)
-      if (selectedModel.useThinking) {
-          config.thinkingConfig = { thinkingBudget: 16384 }; // High budget for deep reasoning
-      }
-
-      const newChat = ai.chats.create({ 
-          model: selectedModel.modelName, 
-          config 
-      });
-      
+      const config: any = { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] };
+      if (selectedModel.useThinking) config.thinkingConfig = { thinkingBudget: 16384 };
+      const newChat = ai.chats.create({ model: selectedModel.modelName, config });
       setChat(newChat);
       const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
       if (!importedFilesRaw) {
@@ -180,7 +136,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
         setMessages([newBotMessage]);
         for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
       }
-    } catch (error) { console.error("Failed to initialize chatbot:", error); setMessages([{ id: 'bot-error', sender: 'bot', text: "Sorry, I'm having trouble connecting right now. Please check your API key or try again later." }]);
+    } catch (error) { console.error("Failed to initialize chatbot:", error); setMessages([{ id: 'bot-error', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   }, [selectedModelId]);
     
@@ -193,13 +149,10 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
             const importedFiles = JSON.parse(importedFilesRaw);
             if (Array.isArray(importedFiles) && importedFiles.length > 0) {
                 setAttachedFiles(prev => [...prev, ...importedFiles]);
-                const fileNames = importedFiles.map(f => f.name).join(', ');
-                const prompt = `I've uploaded ${fileNames}. Can you analyze these images of handwritten questions and help me create a question paper?`;
+                const prompt = `I've uploaded some files. Help me create a question paper.`;
                 setUserInput(prompt);
             }
-        } catch (e) {
-            console.error("Could not parse imported files from session storage", e);
-        }
+        } catch (e) { console.error("Could not parse imported files", e); }
     }
   }, []);
 
@@ -210,23 +163,13 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     const text = messageText.trim();
     const files = filesToAttach || attachedFiles;
     if ((!text && files.length === 0) || isBotTyping || !chat) return;
-    
-    let userMessageForUI = text;
-    if (files.length > 0) {
-        const fileNames = files.map(f => f.name).join(', ');
-        userMessageForUI = text ? `${text}\n[Files attached: ${fileNames}]` : `[Files attached: ${fileNames}]`;
-    }
-    setMessages(prev => [...prev, { id: `user-${Date.now()}`, sender: 'user', text: userMessageForUI }]);
+    setMessages(prev => [...prev, { id: `user-${Date.now()}`, sender: 'user', text: text || "[File attached]" }]);
     setUserInput(''); setIsBotTyping(true);
-    
     try {
       const messageParts: Part[] = [];
       if (text) messageParts.push({ text });
-      files.forEach(file => {
-          messageParts.push({ inlineData: { data: file.data, mimeType: file.mimeType } });
-      });
-      setAttachedFiles([]); // Clear after sending
-
+      files.forEach(file => { messageParts.push({ inlineData: { data: file.data, mimeType: file.mimeType } }); });
+      setAttachedFiles([]);
       const responseStream = await generateChatResponseStream(chat, messageParts, useSearch, useThinking);
       const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '', grounding: [] };
       setMessages(prev => [...prev, newBotMessage]);
@@ -236,8 +179,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
         if (chunk.candidates?.[0]?.groundingMetadata?.groundingChunks) newBotMessage.grounding = chunk.candidates[0].groundingMetadata.groundingChunks;
         if(chunk.text) setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text, grounding: newBotMessage.grounding } : msg));
       }
-      if (functionCalls.length > 0 && functionCalls[0].name === 'generatePaper' && functionCalls[0].args) { handleTriggerGeneration(functionCalls[0].args); return; }
-    } catch (error) { console.error("Error sending message to Gemini:", error); setMessages(prev => [...prev, { id: 'bot-error-send', sender: 'bot', text: "I encountered an error. Please try again." }]);
+      if (functionCalls.length > 0 && functionCalls[0].name === 'generatePaper') { handleTriggerGeneration(functionCalls[0].args); return; }
+    } catch (error) { console.error("Chat Error", error); setMessages(prev => [...prev, { id: 'bot-error-send', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   };
   
@@ -245,12 +188,9 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     const formData: Partial<FormData> = { ...args }; 
     formData.totalMarks = (formData.questionDistribution || []).reduce((acc: number, item: any) => acc + (item.count * item.marks), 0); 
     formData.questionDistribution?.forEach((item: any) => { item.id = `dist-${Date.now()}-${Math.random()}`});
-    if (!formData.sourceMode) {
-        formData.sourceMode = 'reference';
-    }
-    setMessages(prev => [...prev, { id: 'bot-gen', sender: 'bot', text: "Perfect, I have all the details! Generating your question paper now..." }]); 
-    setIsBotTyping(false); 
-    onGenerate(formData as FormData); 
+    if (!formData.sourceMode) formData.sourceMode = 'reference';
+    setMessages(prev => [...prev, { id: 'bot-gen', sender: 'bot', text: "Generating your paper..." }]); 
+    setIsBotTyping(false); onGenerate(formData as FormData); 
   };
   
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -260,7 +200,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       try {
         const base64Data = await blobToBase64(file);
         setAttachedFiles(prev => [...prev, { name: file.name, data: base64Data, mimeType: file.type }]);
-      } catch (error) { console.error("Error processing file:", error); alert("Sorry, there was an error processing that file."); }
+      } catch (error) { alert("Internal Error Occurred"); }
     }
     if(event.target) event.target.value = ''; 
   };
@@ -274,28 +214,28 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
           const source = outputAudioContextRef.current!.createBufferSource();
           source.buffer = audioBuffer; source.connect(outputAudioContextRef.current!.destination); source.start();
           audioPlaybackSource.current = source;
-      } catch (error) { console.error("TTS Error:", error); alert("Failed to generate audio."); }
+      } catch (error) { alert("Internal Error Occurred"); }
   };
 
   const startLiveSession = async (voice: VoiceOption) => {
     setIsVoiceModalOpen(false); setIsLiveSessionActive(true); setConversationHistory([]); setCurrentUserText('Connecting...'); setCurrentAiText(''); userUtteranceRef.current = ''; aiUtteranceRef.current = '';
-    if (!process.env.API_KEY) { setCurrentUserText("Error: API_KEY is not configured."); return; }
+    if (!process.env.API_KEY) { setCurrentUserText("Internal Error Occurred"); return; }
     let stream: MediaStream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(err) { setCurrentUserText("Microphone access denied."); setIsLiveSessionActive(false); return; }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }); const sources = new Set<AudioBufferSourceNode>(); nextStartTime = 0;
     sessionPromiseRef.current = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {
-        onopen: () => { setCurrentUserText("Connected! You can start talking now."); const source = inputAudioContext.createMediaStreamSource(stream); const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1); scriptProcessor.onaudioprocess = (audioProcessingEvent) => { const pcmBlob = createBlob(audioProcessingEvent.inputBuffer.getChannelData(0)); sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob })); }; source.connect(scriptProcessor); scriptProcessor.connect(inputAudioContext.destination); },
+        onopen: () => { setCurrentUserText("Connected! Speak now."); const source = inputAudioContext.createMediaStreamSource(stream); const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1); scriptProcessor.onaudioprocess = (e) => { const pcmBlob = createBlob(e.inputBuffer.getChannelData(0)); sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob })); }; source.connect(scriptProcessor); scriptProcessor.connect(inputAudioContext.destination); },
         onmessage: async (message: LiveServerMessage) => {
             if (message.serverContent?.inputTranscription) userUtteranceRef.current = message.serverContent.inputTranscription.text; if (message.serverContent?.outputTranscription) aiUtteranceRef.current = message.serverContent.outputTranscription.text; setCurrentUserText(userUtteranceRef.current); setCurrentAiText(aiUtteranceRef.current);
             if (message.serverContent?.turnComplete) { if (userUtteranceRef.current || aiUtteranceRef.current) setConversationHistory(prev => [...prev, { user: userUtteranceRef.current, ai: aiUtteranceRef.current, id: Date.now() }]); userUtteranceRef.current = ''; aiUtteranceRef.current = ''; setCurrentUserText(''); setCurrentAiText(''); }
             if (message.toolCall?.functionCalls?.[0]?.name === 'generatePaper') { handleTriggerGeneration(message.toolCall.functionCalls[0].args); endLiveSession(); return; }
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (base64Audio) { setIsAiSpeaking(true); const outputAudioContext = outputAudioContextRef.current!; nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime); const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1); const source = outputAudioContext.createBufferSource(); source.buffer = audioBuffer; source.connect(outputAudioContext.destination); source.addEventListener('ended', () => { sources.delete(source); if(sources.size === 0) setIsAiSpeaking(false); }); source.start(nextStartTime); nextStartTime = nextStartTime + audioBuffer.duration; sources.add(source); }
+            if (base64Audio) { setIsAiSpeaking(true); const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current!, 24000, 1); const source = outputAudioContextRef.current!.createBufferSource(); source.buffer = audioBuffer; source.connect(outputAudioContextRef.current!.destination); source.addEventListener('ended', () => { sources.delete(source); if(sources.size === 0) setIsAiSpeaking(false); }); source.start(nextStartTime); nextStartTime = nextStartTime + audioBuffer.duration; sources.add(source); }
             if (message.serverContent?.interrupted) { for (const source of sources.values()) source.stop(); sources.clear(); nextStartTime = 0; setIsAiSpeaking(false); }
         },
-        onerror: (e: ErrorEvent) => { console.error(e); setCurrentUserText(`An error occurred: ${e.message}. Please try again.`); endLiveSession(); },
+        onerror: (e: ErrorEvent) => { setCurrentUserText("Internal Error Occurred"); endLiveSession(); },
         onclose: (e: CloseEvent) => { stream?.getTracks().forEach(track => track.stop()); inputAudioContext.close(); },
       },
       config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.id }}}, systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }], inputAudioTranscription: {}, outputAudioTranscription: {} },
@@ -303,13 +243,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   };
   const endLiveSession = () => { sessionPromiseRef.current?.then(session => session.close()); setIsLiveSessionActive(false); setCurrentUserText(''); setCurrentAiText(''); setIsAiSpeaking(false); };
 
-  return ( <> <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept="image/*,application/pdf,.txt,.md" /> <div className="relative flex flex-col h-full w-full bg-slate-50 dark:bg-black"> <button onClick={initChat} title="New Chat" className="absolute top-4 left-4 z-20 w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"> <NewChatIcon className="w-5 h-5 text-slate-600 dark:text-slate-300"/> </button> 
-  
-  <div className="absolute top-4 right-4 z-20">
-      <ModelSelector selectedModelId={selectedModelId} onSelect={setSelectedModelId} />
-  </div>
-
-  <div className="flex-1 p-4 sm:p-6 space-y-6 overflow-y-auto"> <div className="max-w-3xl mx-auto w-full space-y-6"> {messages.map((msg) => <MessageBubble key={msg.id} message={msg} onSpeak={handleSpeak} />)} {messages.length === 0 && !isBotTyping && <WelcomeScreen onSuggestionClick={(text) => handleSendMessage(text)} />} {isBotTyping && <TypingIndicator />} </div> <div ref={messagesEndRef} /> </div> <div className="sticky bottom-0 w-full pt-2 pb-4 sm:pb-6 bg-gradient-to-t from-slate-50 dark:from-black"> <InputBar userInput={userInput} setUserInput={setUserInput} onSendMessage={() => handleSendMessage(userInput)} isBotTyping={isBotTyping} onAttachmentClick={() => fileInputRef.current?.click()} onVoiceClick={() => setIsVoiceModalOpen(true)} attachedFiles={attachedFiles} onRemoveAttachment={(name) => setAttachedFiles(files => files.filter(f => f.name !== name))} useSearch={useSearch} setUseSearch={setUseSearch} useThinking={useThinking} setUseThinking={setUseThinking} /> </div> </div> {isVoiceModalOpen && <VoiceModeModal onClose={() => setIsVoiceModalOpen(false)} onStart={startLiveSession} />} {isLiveSessionActive && ( <div className="fixed inset-0 bg-gray-900/95 backdrop-blur-2xl flex flex-col items-center justify-center z-50 animate-fade-in p-4"> <div className="relative w-48 h-48 flex items-center justify-center shrink-0"> <div className={`absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full transition-transform duration-500 ${isAiSpeaking ? 'scale-150 animate-pulse opacity-30' : 'scale-100 opacity-20'}`}></div> <div className={`absolute inset-4 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full transition-transform duration-500 ${isAiSpeaking ? 'scale-125 animate-pulse [animation-delay:0.2s] opacity-40' : 'scale-100 opacity-30'}`}></div> <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className={`relative w-24 h-24 transition-transform duration-500 ${isAiSpeaking ? 'scale-110' : 'scale-100'}`} /> </div> <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 text-white text-xl my-8 p-4"> {conversationHistory.map(turn => ( <React.Fragment key={turn.id}> {turn.user && <div className="text-right"><span className="px-4 py-2 rounded-2xl inline-block bg-blue-600 rounded-br-none max-w-full break-words">{turn.user}</span></div>} {turn.ai && <div className="text-left"><span className="px-4 py-2 rounded-2xl inline-block bg-slate-700 rounded-bl-none max-w-full break-words">{turn.ai}</span></div>} </React.Fragment> ))} {currentUserText && <div className="text-right"><span className="px-4 py-2 rounded-2xl inline-block bg-blue-600 rounded-br-none opacity-70 max-w-full break-words">{currentUserText}</span></div>} {currentAiText && <div className="text-left"><span className="px-4 py-2 rounded-2xl inline-block bg-slate-700 rounded-bl-none opacity-70 max-w-full break-words">{currentAiText}</span></div>} <div ref={conversationEndRef} /> </div> <button onClick={endLiveSession} className="shrink-0 bg-red-600 text-white font-bold py-3 px-6 rounded-full hover:bg-red-700 flex items-center gap-2 shadow-lg transition-transform hover:scale-105"> <StopIcon className="w-6 h-6" /> End Session </button> </div> )} </> ); };
+  return ( <> <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept="image/*,application/pdf,.txt,.md" /> <div className="relative flex flex-col h-full w-full bg-slate-50 dark:bg-black"> <button onClick={initChat} title="New Chat" className="absolute top-4 left-4 z-20 w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-800/80 backdrop-blur-md rounded-full shadow-md border dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"> <NewChatIcon className="w-5 h-5 text-slate-600 dark:text-slate-300"/> </button> <div className="absolute top-4 right-4 z-20"><ModelSelector selectedModelId={selectedModelId} onSelect={setSelectedModelId} /></div> <div className="flex-1 p-4 sm:p-6 space-y-6 overflow-y-auto"> <div className="max-w-3xl mx-auto w-full space-y-6"> {messages.map((msg) => <MessageBubble key={msg.id} message={msg} onSpeak={handleSpeak} />)} {messages.length === 0 && !isBotTyping && <WelcomeScreen onSuggestionClick={(text) => handleSendMessage(text)} />} {isBotTyping && <TypingIndicator />} </div> <div ref={messagesEndRef} /> </div> <div className="sticky bottom-0 w-full pt-2 pb-4 sm:pb-6 bg-gradient-to-t from-slate-50 dark:from-black"> <InputBar userInput={userInput} setUserInput={setUserInput} onSendMessage={() => handleSendMessage(userInput)} isBotTyping={isBotTyping} onAttachmentClick={() => fileInputRef.current?.click()} onVoiceClick={() => setIsVoiceModalOpen(true)} attachedFiles={attachedFiles} onRemoveAttachment={(name) => setAttachedFiles(files => files.filter(f => f.name !== name))} useSearch={useSearch} setUseSearch={setUseSearch} useThinking={useThinking} setUseThinking={setUseThinking} /> </div> </div> {isVoiceModalOpen && <VoiceModeModal onClose={() => setIsVoiceModalOpen(false)} onStart={startLiveSession} />} {isLiveSessionActive && ( <div className="fixed inset-0 bg-gray-900/95 backdrop-blur-2xl flex flex-col items-center justify-center z-50 animate-fade-in p-4"> <div className="relative w-48 h-48 flex items-center justify-center shrink-0"> <div className={`absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full transition-transform duration-500 ${isAiSpeaking ? 'scale-150 animate-pulse opacity-30' : 'scale-100 opacity-20'}`}></div> <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className={`relative w-24 h-24 transition-transform duration-500 ${isAiSpeaking ? 'scale-110' : 'scale-100'}`} /> </div> <div className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 text-white text-xl my-8 p-4"> {conversationHistory.map(turn => ( <React.Fragment key={turn.id}> {turn.user && <div className="text-right"><span className="px-4 py-2 rounded-2xl inline-block bg-blue-600 rounded-br-none max-w-full break-words">{turn.user}</span></div>} {turn.ai && <div className="text-left"><span className="px-4 py-2 rounded-2xl inline-block bg-slate-700 rounded-bl-none max-w-full break-words">{turn.ai}</span></div>} </React.Fragment> ))} {currentUserText && <div className="text-right"><span className="px-4 py-2 rounded-2xl inline-block bg-blue-600 rounded-br-none opacity-70 max-w-full break-words">{currentUserText}</span></div>} {currentAiText && <div className="text-left"><span className="px-4 py-2 rounded-2xl inline-block bg-slate-700 rounded-bl-none opacity-70 max-w-full break-words">{currentAiText}</span></div>} <div ref={conversationEndRef} /> </div> <button onClick={endLiveSession} className="shrink-0 bg-red-600 text-white font-bold py-3 px-6 rounded-full hover:bg-red-700 flex items-center gap-2 shadow-lg transition-transform hover:scale-105"> <StopIcon className="w-6 h-6" /> End Session </button> </div> )} </> ); };
 
 function encode(bytes: Uint8Array) { let binary = ''; const len = bytes.byteLength; for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); } return btoa(binary); }
 function decode(base64: string) { const binaryString = atob(base64); const len = binaryString.length; const bytes = new Uint8Array(len); for (let i = 0; i < len; i++) { bytes[i] = binaryString.charCodeAt(i); } return bytes; }
