@@ -1,14 +1,21 @@
-
 import { type QuestionPaperData, type Question, QuestionType } from '../types';
 
 const escapeHtml = (unsafe: string | undefined): string => {
     if (typeof unsafe !== 'string') return '';
-    return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    // Special handling for LaTeX to avoid mangling $ and \
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 const formatSpecialText = (text: string = ''): string => {
-    const escapedText = escapeHtml(text.trim());
-    return escapedText.replace(/\n/g, '<br/>');
+    // We don't want to use escapeHtml here if we want LaTeX to work, 
+    // but dangerouslySetInnerHTML requires it to be relatively clean.
+    // We preserve $ characters.
+    return text.trim().replace(/\n/g, '<br/>');
 };
 
 const toRoman = (num: number): string => {
@@ -84,8 +91,6 @@ const renderQuestion = (question: Question): string => {
         </div>`;
 };
 
-// --- Answer Key Generation ---
-
 const renderAnswerContent = (question: Question): string => {
     if (question.type === QuestionType.MatchTheFollowing && typeof question.answer === 'object' && question.answer !== null) {
         return `<ul style="margin: 0; padding-left: 20px;">
@@ -135,9 +140,6 @@ export const generateAnswerKeyHtml = (paperData: QuestionPaperData, showQuestion
 
     return `<div>${headerHtml}<div style="margin-top: 20px;">${questionsHtml}</div></div>`;
 };
-
-
-// --- Shared Header Generator ---
 
 const generateHeaderHtml = (paperData: QuestionPaperData, titleOverride?: string, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' } }) => {
      const logoSrc = options?.logoConfig?.src;
@@ -197,7 +199,7 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         sectionLetterCounter++;
         const sectionLetter = String.fromCharCode(64 + sectionLetterCounter);
 
-        const marksSummary = new Map<number, number>(); // Map<marks, count>
+        const marksSummary = new Map<number, number>();
         let sectionTotalMarks = 0;
         questionsInSection.forEach(q => {
             marksSummary.set(q.marks, (marksSummary.get(q.marks) || 0) + 1);

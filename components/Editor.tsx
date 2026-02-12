@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -23,6 +22,26 @@ import { ProImageEditor } from './ProImageEditor';
 interface EditorProps { paperData: QuestionPaperData; onSave: (paperData: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }
 
 const A4_WIDTH_PX = 794; const A4_HEIGHT_PX = 1123; const LETTER_WIDTH_PX = 816; const LETTER_HEIGHT_PX = 1056;
+
+// Helper to trigger KaTeX rendering
+const triggerMathRendering = (element: HTMLElement | null) => {
+    if (!element) return;
+    try {
+        if ((window as any).renderMathInElement) {
+            (window as any).renderMathInElement(element, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false
+            });
+        }
+    } catch (e) {
+        console.warn("KaTeX rendering failed", e);
+    }
+};
 
 const useDebouncedCallback = (callback: (...args: any[]) => void, delay: number) => {
     const timeoutRef = useRef<number | null>(null);
@@ -106,7 +125,6 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
     const imageUploadInputRef = useRef<HTMLInputElement>(null);
     const [imageToEditInPro, setImageToEditInPro] = useState<UploadedImage | null>(null);
 
-    // Answer Key Mode State
     const [viewMode, setViewMode] = useState<'questionPaper' | 'answerKey'>('questionPaper');
     const [showQuestionsInKey, setShowQuestionsInKey] = useState(true);
     
@@ -138,7 +156,6 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
     }, [editorState, setEditorState, debouncedSave]);
     
     const handleContentChange = useDebouncedCallback((pageIndex: number, newHtml: string) => {
-        // Only allow content edit in Question Paper mode
         if (viewMode === 'answerKey') return;
 
         const allPages = pagesContainerRef.current?.querySelectorAll('.paper-content-host'); if (!allPages || allPages.length === 0) return;
@@ -146,6 +163,9 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
         const wrappedHtml = `<div>${fullHtml}</div>`;
         const newPaper = { ...paper, htmlContent: wrappedHtml };
         handleStateUpdate(s => ({ ...s, paper: newPaper }), true);
+        
+        // Retrigger math rendering after manual text edit
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 0);
     }, 1000);
     
     const handleBrandingUpdate = (updates: Partial<{ logo: LogoState; watermark: WatermarkState }>) => {
@@ -168,17 +188,12 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                 ? { src: newLogoState.src, alignment: newLogoState.position.replace('header-', '') as 'left' | 'center' | 'right' }
                 : undefined;
             
-            // Regenerate HTML for both modes to ensure logo propagates
             newPaper = { ...newPaper, htmlContent: generateHtmlFromPaperData(newPaper, { logoConfig }) };
             
             return { ...s, paper: newPaper, logo: newLogoState, watermark: newWatermarkState };
         });
     };
     
-    const renumberQuestions = (questions: Question[]): Question[] => {
-        return questions.map((q, index) => ({...q, questionNumber: index + 1}));
-    };
-
     const handleUpdateImage = (state: ImageState) => handleStateUpdate(s => ({ ...s, images: s.images.map(i => i.id === state.id ? state : i) }));
     const handleDeleteImage = (id: string) => handleStateUpdate(s => ({ ...s, images: s.images.filter(i => i.id !== id) }));
     const handleAiImageEdit = async (id: string, prompt: string) => {
@@ -204,8 +219,6 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
         if (data) {
             try {
                 const uploadedImage = JSON.parse(data) as UploadedImage;
-                
-                // Find which page the drop happened on
                 const pageContainers = pagesContainerRef.current?.querySelectorAll('.paper-page-container');
                 if (!pageContainers) return;
 
@@ -215,12 +228,7 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
 
                 for (let i = 0; i < pageContainers.length; i++) {
                     const rect = pageContainers[i].getBoundingClientRect();
-                    if (
-                        e.clientX >= rect.left &&
-                        e.clientX <= rect.right &&
-                        e.clientY >= rect.top &&
-                        e.clientY <= rect.bottom
-                    ) {
+                    if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
                         targetPageIndex = i;
                         dropX = e.clientX - rect.left;
                         dropY = e.clientY - rect.top;
@@ -228,12 +236,9 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                     }
                 }
 
-                // Default width/height if not present
                 const w = uploadedImage.width && uploadedImage.width > 0 ? Math.min(uploadedImage.width, 300) : 300;
                 const h = uploadedImage.height && uploadedImage.height > 0 ? (w / uploadedImage.width) * uploadedImage.height : 300;
-                
                 handleInsertGeneratedImage(uploadedImage.url, w, h, dropX, dropY, targetPageIndex);
-                
             } catch (err) {
                 console.error("Failed to parse drop data", err);
             }
@@ -247,28 +252,19 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
             reader.onload = (event) => {
                 const img = new Image();
                 img.onload = () => {
-                    // Identify active page based on scroll position (rough estimate)
                     const container = editorContentRef.current;
                     const scrollY = container ? container.scrollTop : 0;
-                    const pageHeight = (paperSize === 'a4' ? A4_HEIGHT_PX : LETTER_HEIGHT_PX) + 32; // height + margin
+                    const pageHeight = (paperSize === 'a4' ? A4_HEIGHT_PX : LETTER_HEIGHT_PX) + 32;
                     const currentPageIndex = Math.floor(scrollY / pageHeight);
-                    
-                    handleInsertGeneratedImage(
-                        event.target?.result as string, 
-                        img.width > 300 ? 300 : img.width, 
-                        img.width > 300 ? (300 / img.width) * img.height : img.height,
-                        100, 100, // Default Position
-                        Math.max(0, Math.min(currentPageIndex, pagesHtml.length - 1))
-                    );
+                    handleInsertGeneratedImage(event.target?.result as string, img.width > 300 ? 300 : img.width, img.width > 300 ? (300 / img.width) * img.height : img.height, 100, 100, Math.max(0, Math.min(currentPageIndex, pagesHtml.length - 1)));
                 };
                 img.src = event.target?.result as string;
             };
             reader.readAsDataURL(file);
         }
-        e.target.value = ''; // Reset input so same file can be selected again
+        e.target.value = '';
     };
 
-    // Pagination Logic
     useEffect(() => {
         const paginateContent = () => {
             const stagingContainer = document.createElement('div');
@@ -279,10 +275,9 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
             stagingContainer.style.fontFamily = styles.fontFamily;
             stagingContainer.className = "paper-content-host prose dark:prose-invert max-w-none";
             
-            // Determine content source based on mode
             let contentToRender = '';
             if (viewMode === 'answerKey') {
-                const logoConfig = (logo.position.startsWith('header')) ? { src: logo.src, alignment: logo.position.replace('header-', '') as 'left' | 'center' | 'right' } : undefined;
+                const logoConfig = (logo.position.startsWith('header')) ? { src: logo.src, alignment: logo.position.replace('header-', '') as any } : undefined;
                 contentToRender = generateAnswerKeyHtml(paper, showQuestionsInKey, { logoConfig });
             } else {
                 contentToRender = paper.htmlContent;
@@ -310,25 +305,16 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                 currentPageContent += element.outerHTML;
                 currentHeight += elementHeight;
             });
-            if (currentPageContent) {
-                pages.push(currentPageContent);
-            }
+            if (currentPageContent) pages.push(currentPageContent);
             document.body.removeChild(stagingContainer);
             setPagesHtml(pages.length ? pages : ['']);
+            
+            // Trigger KaTeX after pages are generated
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 0);
         };
 
         paginateContent();
-        const resizeObserver = new ResizeObserver(paginateContent);
-        if (pagesContainerRef.current) {
-            resizeObserver.observe(pagesContainerRef.current);
-        }
-        
-        return () => {
-            if (pagesContainerRef.current) {
-                resizeObserver.unobserve(pagesContainerRef.current);
-            }
-        };
-    }, [paper.htmlContent, styles, paperSize, viewMode, showQuestionsInKey, logo]); // Re-run on mode change
+    }, [paper.htmlContent, styles, paperSize, viewMode, showQuestionsInKey, logo]);
 
     const handleSaveAndExitClick = () => {
         onSave(editorState.paper);
@@ -363,19 +349,15 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
 
     const handleCoEditorSend = async (messageText: string) => {
         if (!messageText.trim() || !editingChat) return;
-
         const userMessage: CoEditorMessage = { id: `user-${Date.now()}`, sender: 'user', text: messageText };
         setCoEditorMessages(prev => [...prev, userMessage]);
         setIsCoEditorTyping(true);
-
         try {
             const response = await getAiEditResponse(editingChat, messageText);
-            
             if (response.functionCalls && response.functionCalls.length > 0) {
                 let actionDescription = "Updates applied.";
                 for (const call of response.functionCalls) {
                     const args = call.args as any;
-                    // Handle special async tools
                     if (call.name === 'translatePaper') {
                          const currentPaper = editorState.paper;
                          const translatedPaper = await translatePaperService(currentPaper, args.targetLanguage);
@@ -400,42 +382,24 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                          setImageModalVisible(true);
                          actionDescription = "Opened image generator.";
                     } else {
-                        // Handle standard sync tools
                         handleStateUpdate(s => {
                             const newState = { ...s };
                             const p = { ...newState.paper };
                             const qs = [...p.questions];
-                            
                             if (call.name === 'addQuestion') {
-                                const newQ: Question = {
-                                    questionNumber: qs.length + 1,
-                                    type: args.type,
-                                    questionText: args.questionText,
-                                    options: args.options ? (typeof args.options === 'string' ? JSON.parse(args.options) : args.options) : null,
-                                    answer: args.answer,
-                                    marks: args.marks,
-                                    difficulty: args.difficulty,
-                                    taxonomy: args.taxonomy,
-                                    styles: {}
-                                };
+                                const newQ: Question = { questionNumber: qs.length + 1, type: args.type, questionText: args.questionText, options: args.options ? (typeof args.options === 'string' ? JSON.parse(args.options) : args.options) : null, answer: args.answer, marks: args.marks, difficulty: args.difficulty, taxonomy: args.taxonomy, styles: {} };
                                 qs.push(newQ);
                             } else if (call.name === 'updateQuestion') {
                                 const qIdx = qs.findIndex(q => q.questionNumber === args.questionNumber);
                                 if (qIdx !== -1) {
                                     const updates = args.updates;
-                                    if (updates.options && typeof updates.options === 'string') {
-                                         try { updates.options = JSON.parse(updates.options); } catch(e) {}
-                                    }
-                                    if (updates.styles) {
-                                         qs[qIdx] = { ...qs[qIdx], ...updates, styles: { ...qs[qIdx].styles, ...updates.styles } };
-                                    } else {
-                                         qs[qIdx] = { ...qs[qIdx], ...updates };
-                                    }
+                                    if (updates.options && typeof updates.options === 'string' && updates.options.startsWith('[')) { try { updates.options = JSON.parse(updates.options); } catch(e) {} }
+                                    if (updates.styles) { qs[qIdx] = { ...qs[qIdx], ...updates, styles: { ...qs[qIdx].styles, ...updates.styles } }; }
+                                    else { qs[qIdx] = { ...qs[qIdx], ...updates }; }
                                 }
                             } else if (call.name === 'deleteQuestion') {
                                  const qIdx = qs.findIndex(q => q.questionNumber === args.questionNumber);
                                  if (qIdx !== -1) qs.splice(qIdx, 1);
-                                 // renumber
                                  for(let i=0; i<qs.length; i++) qs[i].questionNumber = i+1;
                             } else if (call.name === 'updatePaperStyles') {
                                 if (args.fontFamily) newState.styles.fontFamily = args.fontFamily;
@@ -450,9 +414,7 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                                         if (args.filters.type && qs[i].type !== args.filters.type) match = false;
                                         if (args.filters.difficulty && qs[i].difficulty !== args.filters.difficulty) match = false;
                                     }
-                                    if (match) {
-                                        qs[i] = { ...qs[i], ...args.updates };
-                                    }
+                                    if (match) qs[i] = { ...qs[i], ...args.updates };
                                 }
                             } else if (call.name === 'findAndReplaceText') {
                                 const findRegex = new RegExp(args.findText, 'gi');
@@ -461,16 +423,9 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                                     q.questionText = q.questionText.replace(findRegex, args.replaceText);
                                 });
                             } else if (call.name === 'addTextBox') {
-                                const newTb: TextBoxState = {
-                                    id: `tb-${Date.now()}`,
-                                    x: 100, y: 100, width: 200, height: 100,
-                                    htmlContent: 'New Text Box',
-                                    rotation: 0,
-                                    pageIndex: 0
-                                };
+                                const newTb: TextBoxState = { id: `tb-${Date.now()}`, x: 100, y: 100, width: 200, height: 100, htmlContent: 'New Text Box', rotation: 0, pageIndex: 0 };
                                 newState.textBoxes = [...newState.textBoxes, newTb];
                             }
-
                             p.questions = qs;
                             const logoConfig = (newState.logo.position.startsWith('header')) ? { src: newState.logo.src, alignment: newState.logo.position.replace('header-', '') as any } : undefined;
                             p.htmlContent = generateHtmlFromPaperData(p, { logoConfig });
@@ -481,13 +436,8 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                 }
                 setCoEditorMessages(prev => [...prev, { id: `bot-${Date.now()}`, sender: 'bot', text: actionDescription }]);
             } 
-            
-            if (response.text) {
-                setCoEditorMessages(prev => [...prev, { id: `bot-txt-${Date.now()}`, sender: 'bot', text: response.text || "" }]);
-            }
-            
+            if (response.text) setCoEditorMessages(prev => [...prev, { id: `bot-txt-${Date.now()}`, sender: 'bot', text: response.text || "" }]);
         } catch (error) {
-             console.error("AI Edit Error", error);
              setCoEditorMessages(prev => [...prev, { id: `bot-err-${Date.now()}`, sender: 'bot', text: "Sorry, I couldn't process that request." }]);
         } finally {
             setIsCoEditorTyping(false);
@@ -497,24 +447,14 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick,
         openExportModal: () => handleExport('pdf'),
-        openAnswerKeyModal: () => {
-            // Toggle between view modes
-            setViewMode(prev => prev === 'questionPaper' ? 'answerKey' : 'questionPaper');
-        },
-        isSaving,
-        paperSubject: paper.subject,
-        undo,
-        redo,
-        canUndo,
-        canRedo,
-        isAnswerKeyMode: viewMode === 'answerKey'
+        openAnswerKeyModal: () => setViewMode(prev => prev === 'questionPaper' ? 'answerKey' : 'questionPaper'),
+        isSaving, paperSubject: paper.subject, undo, redo, canUndo, canRedo, isAnswerKeyMode: viewMode === 'answerKey'
     }));
     
     return (
       <div className="flex flex-col h-full bg-slate-200 dark:bg-gray-900">
         <input type="file" ref={imageUploadInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
         <div className="flex flex-row flex-1 overflow-hidden">
-            {/* Left Sidebar */}
             <div className="w-[320px] bg-white dark:bg-slate-900 border-r dark:border-slate-700/80 flex flex-col shadow-lg z-10">
                 <div className="p-2 border-b dark:border-slate-700/80">
                     <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg">
@@ -528,45 +468,21 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                         <EditorSidebar 
                             styles={styles} 
                             onStyleChange={(key, value) => handleStateUpdate(s => { const newS = {...s, styles: {...s.styles, [key]: value}}; newS.paper.htmlContent = generateHtmlFromPaperData(newS.paper, { logoConfig: (newS.logo.position.startsWith('header')) ? { src: newS.logo.src, alignment: newS.logo.position.replace('header-', '') as 'left' | 'center' | 'right' } : undefined }); return newS; })} 
-                            paperSize={paperSize} 
-                            onPaperSizeChange={setPaperSize}
-                            logo={logo}
-                            watermark={watermark}
-                            onBrandingUpdate={handleBrandingUpdate}
-                            onOpenImageModal={() => setImageModalVisible(true)}
-                            onUploadImageClick={() => imageUploadInputRef.current?.click()}
-                            isAnswerKeyMode={viewMode === 'answerKey'}
-                            showQuestionsInKey={showQuestionsInKey}
-                            onToggleShowQuestions={() => setShowQuestionsInKey(prev => !prev)}
+                            paperSize={paperSize} onPaperSizeChange={setPaperSize} logo={logo} watermark={watermark} onBrandingUpdate={handleBrandingUpdate} onOpenImageModal={() => setImageModalVisible(true)} onUploadImageClick={() => imageUploadInputRef.current?.click()} isAnswerKeyMode={viewMode === 'answerKey'} showQuestionsInKey={showQuestionsInKey} onToggleShowQuestions={() => setShowQuestionsInKey(prev => !prev)}
                         />
                     )}
-                    {sidebarView === 'chat' && (
-                        <CoEditorChat messages={coEditorMessages} isTyping={isCoEditorTyping} onSendMessage={handleCoEditorSend} />
-                    )}
-                    {sidebarView === 'gallery' && (
-                        <ImageGallery 
-                            isCompact 
-                            onEditImage={(img) => setImageToEditInPro(img)} 
-                        />
-                    )}
+                    {sidebarView === 'chat' && <CoEditorChat messages={coEditorMessages} isTyping={isCoEditorTyping} onSendMessage={handleCoEditorSend} />}
+                    {sidebarView === 'gallery' && <ImageGallery isCompact onEditImage={(img) => setImageToEditInPro(img)} />}
                 </div>
             </div>
 
-            {/* Main Canvas */}
-            <main 
-                ref={editorContentRef} 
-                className="flex-1 overflow-auto p-8 relative"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDrop}
-            >
+            <main ref={editorContentRef} className="flex-1 overflow-auto p-8 relative" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
                 {viewMode === 'questionPaper' && <RichTextToolbar editorRef={pagesContainerRef} isExporting={isExporting} />}
-                
                 {viewMode === 'answerKey' && (
                     <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 px-4 py-2 rounded-full shadow-sm z-20 font-bold text-sm flex items-center gap-2">
                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Answer Key Editor
                     </div>
                 )}
-
                 <div ref={pagesContainerRef} style={{ fontFamily: styles.fontFamily }}>
                     {pagesHtml.map((html, pageIndex) => (
                         <div key={pageIndex} className="paper-page-container mx-auto mb-8 relative" style={{ width: `${paperSize === 'a4' ? A4_WIDTH_PX : LETTER_WIDTH_PX}px`, height: `${paperSize === 'a4' ? A4_HEIGHT_PX : LETTER_HEIGHT_PX}px` }}>

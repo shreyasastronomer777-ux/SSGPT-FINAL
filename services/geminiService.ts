@@ -1,11 +1,9 @@
-
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentParameters, GenerateContentResponse } from "@google/genai";
 import { type FormData, type QuestionPaperData, QuestionType, Question, Difficulty, Taxonomy, AnalysisResult, QuestionDistributionItem } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    // User requested simplified error message
     throw new Error("Internal Error Occurred");
 };
 
@@ -70,17 +68,37 @@ ${sourceMode === 'strict' ? "Generate questions ONLY from provided materials." :
     : '';
 
   const finalPrompt = `
-You are an expert question paper creator. Generate a structured JSON array of question objects.
+You are an expert Question Paper Designer for the Indian K-12 education system (CBSE, ICSE, and State Boards). 
+Your task is to generate a professional, high-quality exam paper in JSON format.
+
+**CRITICAL FORMATTING INSTRUCTIONS:**
+1. **LATEX FOR MATH:** You MUST use proper LaTeX syntax for ALL mathematical expressions, formulas, variables, and symbols. 
+   - Use inline LaTeX with single dollar signs (e.g., $x^2 + y = 5$).
+   - Never use plain text fractions like 3/4; always use $\\frac{3}{4}$.
+   - Use proper symbols for operators: $\\times$, $\\div$, $\\pm$, $\\sqrt{x}$, etc.
+   - Even simple numbers in the context of an equation should be in LaTeX.
+2. **NO CHIT-CHAT:** Output ONLY the JSON array.
+3. **ACCURACY:** Ensure questions are grade-appropriate and factually correct for the Indian curriculum.
+4. **LANGUAGE:** Write all text content in **${language}**.
+
 **Specifications:**
-- Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}
+- Subject: ${subject}
+- Class/Grade: ${className}
+- Topics: ${topics}
 ${sourceMaterialInstruction}
-- Required Question Mix:
+
+**Required Question Mix:**
 ${questionRequests}
 
-Instructions:
-1. For 'Multiple Choice', options must be a JSON string array of 4 items.
-2. For 'Match the Following', options must be a JSON string of {columnA: [], columnB: []}.
-3. Return ONLY a JSON array of objects with fields: type, questionText, options, answer, marks, difficulty, taxonomy.
+**Output Schema Requirement:**
+Return a JSON array of objects. Each object MUST have:
+- "type": (Multiple Choice, Short Answer, etc.)
+- "questionText": The text of the question (Include LaTeX math here).
+- "options": FOR MCQ: A JSON string array of 4 items. FOR MATCHING: A JSON string of {columnA: [], columnB: []}. OTHERS: "". (Include LaTeX in options strings if applicable).
+- "answer": The correct answer (Include LaTeX if applicable).
+- "marks": number
+- "difficulty": "Easy" | "Medium" | "Hard"
+- "taxonomy": "Remembering" | "Understanding" | "Applying" | "Analyzing" | "Evaluating" | "Creating"
 `;
 
     const questionSchema = {
@@ -106,7 +124,7 @@ Instructions:
         }
 
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash", // Using Flash for paper generation to optimize quota usage
+            model: "gemini-2.5-flash",
             contents: [{ parts }],
             config: { 
                 responseMimeType: "application/json",
@@ -119,11 +137,13 @@ Instructions:
         
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => {
             let parsedOptions: any = null;
-            if (q.options && typeof q.options === 'string') {
+            if (q.options && typeof q.options === 'string' && (q.options.startsWith('[') || q.options.startsWith('{'))) {
                 try { parsedOptions = JSON.parse(q.options); } catch (e) { parsedOptions = null; }
+            } else {
+                parsedOptions = q.options || null;
             }
             let parsedAnswer: any = q.answer;
-            if (q.type === QuestionType.MatchTheFollowing && typeof q.answer === 'string') {
+            if (q.type === QuestionType.MatchTheFollowing && typeof q.answer === 'string' && q.answer.startsWith('{')) {
                  try { parsedAnswer = JSON.parse(q.answer); } catch (e) {}
             }
             return { ...q, options: parsedOptions, answer: parsedAnswer, questionNumber: index + 1 };
@@ -153,7 +173,7 @@ Instructions:
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
   if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const analysisPrompt = `Analyze and structure the following exam text into the required JSON schema. Text: ${text}`;
+  const analysisPrompt = `Analyze and structure the following exam text into the required JSON schema. If the source contains math, convert it to LaTeX $...$. Text: ${text}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -174,7 +194,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   try {
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this exam content into JSON." }] }],
+        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this exam content into JSON. Convert any math formulas found into professional LaTeX with $ delimiters." }] }],
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -190,7 +210,6 @@ export const generateChatResponseStream = async (chat: Chat, messageParts: Part[
         if (useSearch) config.tools = [{ googleSearch: {} }];
         if (useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
 
-        // Fix: Use 'message' parameter instead of 'contents' for chat.sendMessageStream as per coding guidelines.
         return chat.sendMessageStream({
             message: messageParts,
             config: Object.keys(config).length > 0 ? config : undefined,
@@ -228,8 +247,8 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     const chat = ai.chats.create({
         model: "gemini-2.5-flash",
         config: {
-            systemInstruction: "You are an expert editor for exam papers. Call provided tools to assist user edits.",
-            tools: [{ functionDeclarations: [] }] // Tools would be injected here in full implementation
+            systemInstruction: "You are an expert editor for exam papers. When helping users edit math, always use LaTeX $...$. Call provided tools to assist user edits.",
+            tools: [{ functionDeclarations: [] }] 
         }
     });
     return chat;
@@ -251,7 +270,7 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     try {
         const response = await ai.models.generateContent({ 
             model: "gemini-2.5-flash", 
-            contents: `Translate this exam paper into ${targetLanguage}. Maintain JSON structure.`, 
+            contents: `Translate this exam paper into ${targetLanguage}. Keep math LaTeX strings $...$ unchanged. Maintain JSON structure.`, 
             config: { responseMimeType: "application/json" } 
         });
         const translatedContent = JSON.parse(response.text);
@@ -269,7 +288,7 @@ export const translateQuestionService = async (question: Question, targetLanguag
     try {
         const response = await ai.models.generateContent({ 
             model: "gemini-2.5-flash", 
-            contents: `Translate this question to ${targetLanguage}. Return JSON.`, 
+            contents: `Translate this question to ${targetLanguage}. Return JSON. Maintain LaTeX math.`, 
             config: { responseMimeType: "application/json" } 
         });
         return { ...question, ...JSON.parse(response.text) };

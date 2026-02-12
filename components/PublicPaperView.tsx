@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { type QuestionPaperData } from '../types';
@@ -16,6 +16,7 @@ const A4_HEIGHT_PX = 1123;
 const PublicPaperView: React.FC<PublicPaperViewProps> = ({ paper, onExit }) => {
     const [isExporting, setIsExporting] = useState(false);
     const [pagesHtml, setPagesHtml] = useState<string[]>([]);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!paper.htmlContent) return;
@@ -56,9 +57,21 @@ const PublicPaperView: React.FC<PublicPaperViewProps> = ({ paper, onExit }) => {
 
             document.body.removeChild(stagingContainer);
             setPagesHtml(newPages.length ? newPages : ['']);
+            
+            // Trigger math rendering
+            setTimeout(() => {
+                if (containerRef.current && (window as any).renderMathInElement) {
+                    (window as any).renderMathInElement(containerRef.current, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false},
+                        ],
+                        throwOnError: false
+                    });
+                }
+            }, 50);
         };
 
-        // Delay pagination slightly to ensure styles and fonts are applied for accurate measurement
         const timer = setTimeout(paginate, 100);
         return () => clearTimeout(timer);
     }, [paper.htmlContent]);
@@ -84,7 +97,7 @@ const PublicPaperView: React.FC<PublicPaperViewProps> = ({ paper, onExit }) => {
             for (let i = 0; i < pages.length; i++) {
                 const page = pages[i] as HTMLElement;
                 const canvas = await html2canvas(page, {
-                    scale: 2, // Higher scale for better quality
+                    scale: 2,
                     useCORS: true,
                     logging: false,
                     windowWidth: page.scrollWidth,
@@ -106,7 +119,7 @@ const PublicPaperView: React.FC<PublicPaperViewProps> = ({ paper, onExit }) => {
     };
 
     return (
-        <div className="bg-slate-200 dark:bg-gray-900 min-h-screen">
+        <div className="bg-slate-200 dark:bg-gray-900 min-h-screen" ref={containerRef}>
             <header className="print:hidden sticky top-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-lg z-40 border-b border-slate-200/80 dark:border-slate-700/80 shadow-sm p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className="w-8 h-8" />
