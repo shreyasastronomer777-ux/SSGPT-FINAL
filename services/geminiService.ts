@@ -4,6 +4,7 @@ import { generateHtmlFromPaperData } from "./htmlGenerator";
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
+    // User requested simplified error message
     throw new Error("Internal Error Occurred");
 };
 
@@ -68,37 +69,28 @@ ${sourceMode === 'strict' ? "Generate questions ONLY from provided materials." :
     : '';
 
   const finalPrompt = `
-You are an expert Question Paper Designer for the Indian K-12 education system (CBSE, ICSE, and State Boards). 
+You are an expert Question Paper Designer for the Indian K-12 education system.
 Your task is to generate a professional, high-quality exam paper in JSON format.
 
-**CRITICAL FORMATTING INSTRUCTIONS:**
-1. **LATEX FOR MATH:** You MUST use proper LaTeX syntax for ALL mathematical expressions, formulas, variables, and symbols. 
-   - Use inline LaTeX with single dollar signs (e.g., $x^2 + y = 5$).
-   - Never use plain text fractions like 3/4; always use $\\frac{3}{4}$.
-   - Use proper symbols for operators: $\\times$, $\\div$, $\\pm$, $\\sqrt{x}$, etc.
-   - Even simple numbers in the context of an equation should be in LaTeX.
-2. **NO CHIT-CHAT:** Output ONLY the JSON array.
-3. **ACCURACY:** Ensure questions are grade-appropriate and factually correct for the Indian curriculum.
-4. **LANGUAGE:** Write all text content in **${language}**.
+**CRITICAL MATHEMATICAL FORMATTING (STRICT REQUIREMENT):**
+1. **LATEX FOR ALL MATH:** You MUST use proper LaTeX syntax for ALL mathematical expressions, formulas, fractions, variables, and symbols.
+2. **DELIMITERS:** Use single dollar signs ($...$) for inline math.
+3. **FRACTIONS:** NEVER use plain text like "3/4" or "25/35". Use $\\frac{3}{4}$ and $\\frac{25}{35}$.
+4. **SYMBOLS:** Use proper LaTeX symbols: $\\times$ for multiply, $\\div$ for divide, $\\pm$, $\\sqrt{x}$, $\\pi$, $\\theta$, etc.
+5. **MCQ OPTIONS:** If options contain numbers or math, they MUST be wrapped in LaTeX $...$.
+6. **DECIMALS:** Use LaTeX for decimals if they are part of an equation, e.g., $0.5x$.
 
 **Specifications:**
 - Subject: ${subject}
 - Class/Grade: ${className}
 - Topics: ${topics}
+- Language: ${language}
 ${sourceMaterialInstruction}
 
-**Required Question Mix:**
+- Required Question Mix:
 ${questionRequests}
 
-**Output Schema Requirement:**
-Return a JSON array of objects. Each object MUST have:
-- "type": (Multiple Choice, Short Answer, etc.)
-- "questionText": The text of the question (Include LaTeX math here).
-- "options": FOR MCQ: A JSON string array of 4 items. FOR MATCHING: A JSON string of {columnA: [], columnB: []}. OTHERS: "". (Include LaTeX in options strings if applicable).
-- "answer": The correct answer (Include LaTeX if applicable).
-- "marks": number
-- "difficulty": "Easy" | "Medium" | "Hard"
-- "taxonomy": "Remembering" | "Understanding" | "Applying" | "Analyzing" | "Evaluating" | "Creating"
+Return ONLY a JSON array of objects with fields: type, questionText, options, answer, marks, difficulty, taxonomy.
 `;
 
     const questionSchema = {
@@ -173,7 +165,7 @@ Return a JSON array of objects. Each object MUST have:
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
   if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const analysisPrompt = `Analyze and structure the following exam text into the required JSON schema. If the source contains math, convert it to LaTeX $...$. Text: ${text}`;
+  const analysisPrompt = `Analyze and structure the following exam text into the required JSON schema. Convert all math to professional LaTeX $...$. Text: ${text}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -194,7 +186,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   try {
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this exam content into JSON. Convert any math formulas found into professional LaTeX with $ delimiters." }] }],
+        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this content into JSON. Convert all math formulas to LaTeX $...$." }] }],
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -247,8 +239,8 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     const chat = ai.chats.create({
         model: "gemini-2.5-flash",
         config: {
-            systemInstruction: "You are an expert editor for exam papers. When helping users edit math, always use LaTeX $...$. Call provided tools to assist user edits.",
-            tools: [{ functionDeclarations: [] }] 
+            systemInstruction: "You are an expert editor. For any math, ALWAYS use LaTeX $...$. Guide the user in refining the exam paper.",
+            tools: [{ functionDeclarations: [] }]
         }
     });
     return chat;
@@ -270,7 +262,7 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     try {
         const response = await ai.models.generateContent({ 
             model: "gemini-2.5-flash", 
-            contents: `Translate this exam paper into ${targetLanguage}. Keep math LaTeX strings $...$ unchanged. Maintain JSON structure.`, 
+            contents: `Translate this exam paper into ${targetLanguage}. Maintain LaTeX strings $...$ exactly. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });
         const translatedContent = JSON.parse(response.text);
@@ -288,7 +280,7 @@ export const translateQuestionService = async (question: Question, targetLanguag
     try {
         const response = await ai.models.generateContent({ 
             model: "gemini-2.5-flash", 
-            contents: `Translate this question to ${targetLanguage}. Return JSON. Maintain LaTeX math.`, 
+            contents: `Translate this question to ${targetLanguage}. Preserve LaTeX math. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });
         return { ...question, ...JSON.parse(response.text) };

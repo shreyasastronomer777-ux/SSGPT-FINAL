@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
@@ -57,9 +56,8 @@ const SpeakIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmln
 const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m6 9 6 6 6-6"/></svg>);
 
 const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Collect academic details to generate an exam paper.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, topics: { type: Type.STRING }, timeAllowed: { type: Type.STRING }, questionDistribution: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING }, taxonomy: { type: Type.STRING } }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING } }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
-const systemInstruction = `You are SSGPT, an AI for educators. Help users create exams or answer general queries. Collaborative gather exam details and then use 'generatePaper'.`;
+const systemInstruction = `You are SSGPT, an AI for educators. Help users create exams. For ALL math, use LaTeX $...$. GUIDE: ask for Subject, Class, Topics, Distribution.`;
 
-// Fix: Added TypingIndicator component to resolve 'Cannot find name' error.
 const TypingIndicator: React.FC = () => (
     <div className="flex items-end gap-3 justify-start animate-slide-in-left">
         <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className="w-8 h-8 rounded-full self-start flex-shrink-0" />
@@ -73,7 +71,6 @@ const TypingIndicator: React.FC = () => (
     </div>
 );
 
-// Fix: Added parseMarkdownToHTML helper function to resolve 'Cannot find name' error.
 function parseMarkdownToHTML(text: string) {
     let html = text.trim()
         .replace(/&/g, '&amp;')
@@ -89,6 +86,25 @@ function parseMarkdownToHTML(text: string) {
     html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />');
     return html;
 }
+
+const triggerMathRendering = (element: HTMLElement | null) => {
+    if (!element) return;
+    try {
+        if ((window as any).renderMathInElement) {
+            (window as any).renderMathInElement(element, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false
+            });
+        }
+    } catch (e) {
+        console.warn("KaTeX rendering failed", e);
+    }
+};
 
 const ModelSelector: React.FC<{ selectedModelId: string; onSelect: (id: string) => void }> = ({ selectedModelId, onSelect }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -123,6 +139,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   const [useSearch, setUseSearch] = useState(false); const [useThinking, setUseThinking] = useState(false);
   const audioPlaybackSource = useRef<AudioBufferSourceNode | null>(null);
   const [selectedModelId, setSelectedModelId] = useState('ssgpt-1');
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const initChat = useCallback(async () => {
     setIsBotTyping(true); setMessages([]);
@@ -134,18 +151,23 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       if (selectedModel.useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
       const newChat = ai.chats.create({ model: selectedModel.modelName, config });
       setChat(newChat);
-      const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
-      if (!importedFilesRaw) {
-        const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
-        const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
-        setMessages([newBotMessage]);
-        for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
-      }
+      const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
+      const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
+      setMessages([newBotMessage]);
+      for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
     } catch (error) { setMessages([{ id: 'bot-error', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   }, [selectedModelId]);
     
   useEffect(() => { initChat(); outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }); return () => { isLiveSessionActive && sessionPromiseRef.current?.then(session => session.close()); }; }, [initChat]);
+
+  // Handle Math Rendering whenever messages change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+        triggerMathRendering(chatContainerRef.current);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [messages, isBotTyping]);
 
   const handleSendMessage = async (messageText: string) => {
     const text = messageText.trim();
@@ -165,7 +187,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
         if(chunk.text) setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg));
       }
       if (functionCalls.length > 0 && functionCalls[0].name === 'generatePaper') { handleTriggerGeneration(functionCalls[0].args); return; }
-    } catch (error) { setMessages([{ id: 'bot-err', sender: 'bot', text: "Internal Error Occurred" }]);
+    } catch (error) { setMessages(prev => [...prev, { id: 'bot-err', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   };
   
@@ -207,9 +229,9 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   );
 
   return (
-    <div className="relative flex flex-col h-full w-full bg-slate-50 dark:bg-black">
+    <div className="relative flex flex-col h-full w-full bg-slate-50 dark:bg-black" ref={chatContainerRef}>
         <div className="absolute top-4 left-4 z-20 flex gap-2">
-            <button onClick={initChat} className="w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md"><NewChatIcon className="w-5 h-5"/></button>
+            <button onClick={initChat} className="w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg></button>
             <ModelSelector selectedModelId={selectedModelId} onSelect={setSelectedModelId} />
         </div>
         <div className="flex-1 p-4 space-y-6 overflow-y-auto">

@@ -2,7 +2,6 @@ import { type QuestionPaperData, type Question, QuestionType } from '../types';
 
 const escapeHtml = (unsafe: string | undefined): string => {
     if (typeof unsafe !== 'string') return '';
-    // Special handling for LaTeX to avoid mangling $ and \
     return unsafe
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -12,9 +11,7 @@ const escapeHtml = (unsafe: string | undefined): string => {
 }
 
 const formatSpecialText = (text: string = ''): string => {
-    // We don't want to use escapeHtml here if we want LaTeX to work, 
-    // but dangerouslySetInnerHTML requires it to be relatively clean.
-    // We preserve $ characters.
+    // We preserve $ and \ characters for LaTeX to work correctly with KaTeX.
     return text.trim().replace(/\n/g, '<br/>');
 };
 
@@ -94,7 +91,7 @@ const renderQuestion = (question: Question): string => {
 const renderAnswerContent = (question: Question): string => {
     if (question.type === QuestionType.MatchTheFollowing && typeof question.answer === 'object' && question.answer !== null) {
         return `<ul style="margin: 0; padding-left: 20px;">
-            ${Object.entries(question.answer).map(([key, value]) => `<li><b>${escapeHtml(key)}</b> &rarr; ${escapeHtml(String(value))}</li>`).join('')}
+            ${Object.entries(question.answer).map(([key, value]) => `<li><b>${formatSpecialText(key)}</b> &rarr; ${formatSpecialText(String(value))}</li>`).join('')}
         </ul>`;
     }
     
