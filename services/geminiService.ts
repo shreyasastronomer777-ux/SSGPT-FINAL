@@ -39,7 +39,7 @@ Format:
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -68,26 +68,26 @@ ${sourceMode === 'strict' ? "Generate questions ONLY from provided materials." :
     : '';
 
   const finalPrompt = `
-You are a professional typesetter and Question Paper Designer for the Indian K-12 system.
-Generate a high-quality exam paper in JSON format.
+You are a professional typesetter and Question Paper Designer for the Indian K-12 system. 
+Generate a high-quality, professional exam paper in JSON format.
 
-**STRICT LATEX FORMATTING RULES:**
-1. **FRACTIONS:** NEVER use plain text fractions like "3/5", "1/2", "x/y". You MUST use $\\frac{a}{b}$ syntax for every single fraction in the question text and every single option.
-2. **DELIMITERS:** Wrap ALL math, numbers, variables, and expressions in single dollar signs: $...$.
-3. **SYMBOLS:** Use proper LaTeX: $\\times$ (multiplication), $\\div$ (division), $\\sqrt{x}$ (square root), $\\pi$, $\\approx$, etc.
-4. **OPTIONS:** If an option is a number or fraction, it MUST be wrapped in $...$. E.g., "(a) $\\frac{3}{10}$".
-5. **EXPONENTS:** Use $x^2$ instead of x2 or x^2.
-
-**Example Format:**
-Question: "Calculate the sum of $\\frac{1}{2}$ and $\\frac{1}{4}$."
-Options: ["$\\frac{3}{4}$", "$\\frac{1}{2}$", "$\\frac{3}{8}$", "$\\frac{1}{4}$"]
+**STRICT MATHEMATICAL FORMATTING RULES (MANDATORY):**
+1. **LATEX FOR ALL MATH:** You MUST use proper LaTeX syntax for ALL mathematical expressions, formulas, fractions, negative numbers, numeric variables, and symbols.
+2. **DELIMITERS:** Use single dollar signs ($...$) for ALL inline math.
+3. **FRACTIONS:** NEVER use plain text fractions like "3/5" or "1/2". You MUST use $\\frac{a}{b}$. 
+4. **OPERATORS:** Use proper LaTeX operators: $\\times$ for multiplication, $\\div$ for division, $\\pm$ for plus-minus, $\\sqrt{x}$ for square roots.
+5. **MCQ OPTIONS:** If options are numeric or contain fractions, they MUST be wrapped in LaTeX $...$. E.g., "(a) $\\frac{3}{10}$".
+6. **DECIMALS:** Use LaTeX for decimals if they are part of a math question: e.g., $0.75$.
+7. **NEGATIVE NUMBERS:** Always use LaTeX for negative numbers to ensure proper minus sign rendering: e.g., $-9$ should be written as $-9$ inside dollar signs.
 
 **Paper Specifications:**
-- Subject: ${subject}, Class: ${className}, Topics: ${topics}
+- Subject: ${subject}
+- Class/Grade: ${className}
+- Topics: ${topics}
 - Language: ${language}
 ${sourceMaterialInstruction}
 
-- Required Mix:
+**Required Question Mix:**
 ${questionRequests}
 
 Return ONLY a JSON array of objects with fields: type, questionText, options, answer, marks, difficulty, taxonomy.
@@ -116,7 +116,7 @@ Return ONLY a JSON array of objects with fields: type, questionText, options, an
         }
 
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-pro-preview",
             contents: [{ parts }],
             config: { 
                 responseMimeType: "application/json",
@@ -165,11 +165,11 @@ Return ONLY a JSON array of objects with fields: type, questionText, options, an
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
   if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const analysisPrompt = `Analyze and structure the following exam text into JSON. CRITICAL: Rewrite all plain text fractions (e.g. 1/2) into LaTeX $\\frac{1}{2}$ format. Text: ${text}`;
+  const analysisPrompt = `Analyze and structure the following exam text into JSON. CRITICAL: Convert ALL fractions and math to professional LaTeX $...$. Text: ${text}`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text: analysisPrompt }] }],
       config: { responseMimeType: "application/json" }
     });
@@ -185,8 +185,8 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this content into JSON. CRITICAL: Convert all math and fractions into LaTeX $...$ using \\frac{num}{den}." }] }],
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this content into JSON. Convert all math formulas to LaTeX $...$." }] }],
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -237,9 +237,9 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const chat = ai.chats.create({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-flash-preview",
         config: {
-            systemInstruction: "You are an expert editor. For ANY math or fractions, ALWAYS use professional LaTeX $...$. Guide the user in refining the exam paper.",
+            systemInstruction: "You are an expert editor. For any math, ALWAYS use LaTeX $...$. Guide the user in refining the exam paper.",
             tools: [{ functionDeclarations: [] }]
         }
     });
@@ -261,7 +261,7 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({ 
-            model: "gemini-2.5-flash", 
+            model: "gemini-3-flash-preview", 
             contents: `Translate this exam paper into ${targetLanguage}. Keep LaTeX strings $...$ exactly the same. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });
@@ -279,7 +279,7 @@ export const translateQuestionService = async (question: Question, targetLanguag
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({ 
-            model: "gemini-2.5-flash", 
+            model: "gemini-3-flash-preview", 
             contents: `Translate this question to ${targetLanguage}. Preserve LaTeX math. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });

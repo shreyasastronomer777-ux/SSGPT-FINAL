@@ -165,7 +165,7 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
         handleStateUpdate(s => ({ ...s, paper: newPaper }), true);
         
         // Retrigger math rendering after manual text edit
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 0);
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, 1000);
     
     const handleBrandingUpdate = (updates: Partial<{ logo: LogoState; watermark: WatermarkState }>) => {
@@ -310,7 +310,7 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
             setPagesHtml(pages.length ? pages : ['']);
             
             // Trigger KaTeX after pages are generated
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 0);
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 50);
         };
 
         paginateContent();
@@ -443,6 +443,11 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
             setIsCoEditorTyping(false);
         }
     };
+
+    useEffect(() => {
+        // Run math rendering whenever pages change or view mode changes
+        triggerMathRendering(pagesContainerRef.current);
+    }, [pagesHtml, viewMode]);
 
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick,

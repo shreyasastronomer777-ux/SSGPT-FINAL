@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
@@ -58,7 +59,7 @@ const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<sv
 const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Collect academic details to generate an exam paper.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, topics: { type: Type.STRING }, timeAllowed: { type: Type.STRING }, questionDistribution: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING }, taxonomy: { type: Type.STRING } }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING } }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
 const systemInstruction = `You are SSGPT, an AI for educators. Help users create high-quality exams. 
 
-**MATH FORMATTING:** 
+**STRICT MATH FORMATTING:** 
 - For ALL mathematical content, including fractions, variables, and formulas, you MUST use professional LaTeX wrapped in single dollar signs: $...$. 
 - NEVER use plain text fractions like "1/2". ALWAYS use $\\frac{1}{2}$.
 - This applies to both your chat responses and the paper details you collect.
@@ -79,28 +80,18 @@ const TypingIndicator: React.FC = () => (
 );
 
 function parseMarkdownToHTML(text: string) {
-    // Basic Markdown with LaTeX preservation
     let html = text.trim()
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-    
-    // Code blocks
     html = html.replace(/```([\s\S]*?)```/g, (match, code) => `<pre class="bg-slate-100 dark:bg-slate-900 p-2 rounded-md overflow-x-auto my-2"><code>${code.trim()}</code></pre>`);
-    
-    // Bold / Italic
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    
-    // Lists
     html = html.replace(/^([ \t]*)([\*\-]) (.*$)/gm, (match, indent, bullet, content) => `${indent}<ul><li>${content}</li></ul>`);
     html = html.replace(/<\/ul>\s*<ul>/g, '');
     html = html.replace(/^([ \t]*)\d+\. (.*$)/gm, (match, indent, content) => `${indent}<ol><li>${content}</li></ol>`);
     html = html.replace(/<\/ol>\s*<ol>/g, '');
-    
-    // Newlines
     html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />');
-    
     return html;
 }
 
@@ -168,20 +159,17 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       if (selectedModel.useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
       const newChat = ai.chats.create({ model: selectedModel.modelName, config });
       setChat(newChat);
-      const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
-      if (!importedFilesRaw) {
-        const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
-        const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
-        setMessages([newBotMessage]);
-        for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
-      }
+      const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
+      const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
+      setMessages([newBotMessage]);
+      for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
     } catch (error) { setMessages([{ id: 'bot-error', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   }, [selectedModelId]);
     
   useEffect(() => { initChat(); outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }); return () => { isLiveSessionActive && sessionPromiseRef.current?.then(session => session.close()); }; }, [initChat]);
 
-  // Handle Math Rendering whenever messages change
+  // Trigger math rendering on message update
   useEffect(() => {
     const timer = setTimeout(() => {
         triggerMathRendering(chatContainerRef.current);
