@@ -8,7 +8,20 @@ const handleApiError = (error: any, context: string) => {
     if (error?.message?.includes("Safety")) {
         throw new Error("The content was flagged by safety filters. Please try rephrasing your topics or materials.");
     }
-    throw new Error(`AI Generation Failed (${context}). Please try again.`);
+    throw new Error(`AI Generation Failed (${context}). Please try again with more specific topics.`);
+};
+
+/**
+ * Robustly cleans and parses JSON from AI responses.
+ */
+const parseAiJson = (text: string) => {
+    try {
+        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanedText);
+    } catch (e) {
+        console.error("JSON Parse Error. Raw text:", text);
+        throw new Error("The AI returned an invalid response format. Please try again.");
+    }
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
@@ -21,7 +34,7 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
-        return JSON.parse(response.text);
+        return parseAiJson(response.text);
     } catch (error) {
         handleApiError(error, "extractConfigFromTranscript");
     }
@@ -35,26 +48,26 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are a Senior Academic Examiner. Generate a high-quality examination paper in JSON format.
+You are a Board-Level Senior Examiner. Your objective is to generate a professional, high-standard academic examination paper in JSON format.
 
-**LANGUAGE (TOP PRIORITY):**
-- You MUST generate ALL text (questions, options, instructions) in **${language}**.
-- Use correct academic terminology for the requested language.
+**CORE REQUIREMENT - LANGUAGE:**
+- Generate the ENTIRE exam (questions, options, matches, instructions) strictly in: **${language}**.
+- Use formal academic tone and precise subject-specific terminology appropriate for grade ${className}.
 
-**MATHEMATICAL FORMATTING:**
-1. **LATEX:** Use LaTeX for ALL math formulas, variables ($x$), and symbols ($5 \\times 4$).
-2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g. \\\\frac, \\\\times) in the JSON strings.
+**FORMATTING RULES (CRITICAL):**
+1. **LATEX FOR ALL MATH:** Use LaTeX for ALL math formulas, symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), variables ($x$, $y$), fractions ($\\frac{a}{b}$), and units.
+2. **JSON ESCAPING:** In the JSON output, you MUST use DOUBLE BACKSLASHES (e.g. \\\\times, \\\\frac{a}{b}) for all LaTeX commands inside the string values.
+3. **NO REDUNDANT NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings. The application handles layout and numbering automatically.
 
-**STRUCTURAL RULES:**
-- **NO PREFIXES:** Do NOT include numbering like "1. ", "a)", or labels like "Column A:".
-- **MCQ OPTIONS:** Provide exactly 4 options as an array of strings.
-- **MATCH THE FOLLOWING:** Options MUST be an object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Correct Match 2", "Correct Match 1"...]}.
-- **VALIDITY:** Ensure every question object is complete and fits the grade level.
+**QUESTION STRUCTURES:**
+- **Multiple Choice:** Provide exactly 4 options as a plain array of strings.
+- **Match the Following:** Provide an object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Correct Match 2", "Correct Match 1"...]}. Column B MUST be shuffled.
+- **Answer Field:** The "answer" field must contain the correct choice for MCQs or the complete solution/explanation for other types.
 
 **EXAM PARAMETERS:**
-Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Marks: ${totalMarks} | Time: ${timeAllowed}
-Question Mix: ${JSON.stringify(questionDistribution)}
-${sourceMaterials ? `Reference Content: ${sourceMaterials}` : ''}
+Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Total Marks: ${totalMarks} | Time: ${timeAllowed}
+Mix: ${JSON.stringify(questionDistribution)}
+${sourceMaterials ? `Context/Source Material: ${sourceMaterials}` : ''}
 
 Return only a valid JSON array of question objects.
 `;
@@ -70,13 +83,10 @@ Return only a valid JSON array of question objects.
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            type: { type: Type.STRING, description: "One of: Multiple Choice, Fill in the Blanks, True / False, Short Answer, Long Answer, Match the Following" },
-                            questionText: { type: Type.STRING },
-                            options: { 
-                                type: Type.NULL, // We let the model handle the dynamic shape in JSON, but prompt it heavily.
-                                description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching. Null for others."
-                            },
-                            answer: { type: Type.STRING, description: "The correct answer or solution." },
+                            type: { type: Type.STRING, description: "Question type string" },
+                            questionText: { type: Type.STRING, description: "The core question content" },
+                            options: { type: Type.NULL, description: "Dynamic: string array for MCQ, or {columnA, columnB} for Match" },
+                            answer: { type: Type.STRING, description: "Model solution or answer key" },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
                             taxonomy: { type: Type.STRING }
@@ -87,13 +97,10 @@ Return only a valid JSON array of question objects.
             }
         });
 
-        const text = response.text || "[]";
-        // Clean markdown artifacts if they exist
-        const jsonText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const generatedQuestionsRaw = JSON.parse(jsonText) as any[];
+        const generatedQuestionsRaw = parseAiJson(response.text);
         
         if (!Array.isArray(generatedQuestionsRaw) || generatedQuestionsRaw.length === 0) {
-            throw new Error("AI returned an invalid or empty paper structure.");
+            throw new Error("AI failed to produce content for the paper. Please try again.");
         }
 
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
@@ -109,9 +116,7 @@ Return only a valid JSON array of question objects.
             timeAllowed, questions: processedQuestions, htmlContent: '', createdAt: new Date().toISOString(),
         };
         
-        // Ensure HTML is generated before returning
         structuredPaperData.htmlContent = generateHtmlFromPaperData(structuredPaperData);
-        
         return structuredPaperData;
     } catch (error) {
         handleApiError(error, "generateQuestionPaper");
@@ -144,10 +149,10 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `You are an expert exam editor. Modify the paper based on user instructions. 
-            STRICT MATH: Use LaTeX with double backslashes. 
-            MATCH THE FOLLOWING: Ensure options are {columnA: [], columnB: []}. 
-            LANGUAGE: Always use the language originally used in the paper.`
+            systemInstruction: `You are an expert academic editor.
+            STRICT MATH: Use LaTeX with double backslashes ($...$). 
+            LANGUAGE: Strictly maintain the requested language of the paper.
+            FORMATTING: Do not add redundant numbering to question text strings.`
         }
     });
 };
@@ -183,10 +188,10 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `OCR/Analyze this text to JSON. Math MUST be LaTeX with DOUBLE backslashes ($...$). MTF options must be {columnA: [], columnB: []}. Text: ${text}`,
+        contents: `Analyze this academic content into JSON for an exam paper. Math MUST be LaTeX with DOUBLE backslashes ($...$). Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(response.text) as AnalysisResult;
+    return parseAiJson(response.text) as AnalysisResult;
 };
 
 export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<AnalysisResult> => {
@@ -194,8 +199,8 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: { parts: [...imageParts, { text: "Analyze handwritten questions to JSON. Math MUST be LaTeX with double backslashes. MTF must use {columnA: [], columnB: []}." }] },
+        contents: { parts: [...imageParts, { text: "Analyze handwritten questions to JSON for an exam paper. Math MUST be LaTeX with double backslashes ($...$)." }] },
         config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(response.text) as AnalysisResult;
+    return parseAiJson(response.text) as AnalysisResult;
 };

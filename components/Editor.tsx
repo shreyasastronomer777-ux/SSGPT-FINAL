@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Chat } from '@google/genai';
@@ -43,6 +43,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     });
 
     const [isExporting, setIsExporting] = useState(false);
+    const [isAnswerKeyMode, setIsAnswerKeyMode] = useState(false);
     const [sidebarView, setSidebarView] = useState<'toolbar' | 'chat' | 'gallery'>('toolbar');
     const [coEditorMessages, setCoEditorMessages] = useState<CoEditorMessage[]>([]);
     const [isCoEditorTyping, setIsCoEditorTyping] = useState(false);
@@ -52,48 +53,55 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your paper. Use LaTeX like $5 \\times 4$ for math. I've been optimized for multi-language support and crisp PDF exports." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your paper. Use LaTeX like $x \\times y$ for professional math. I've been optimized for multi-language board exams." }]);
         onReady();
     }, []);
 
-    useEffect(() => {
-        const paginate = () => {
-            const container = document.createElement('div');
-            container.style.width = `${A4_WIDTH_PX - 140}px`;
-            container.style.fontFamily = state.styles.fontFamily;
-            container.style.position = 'absolute';
-            container.style.left = '-9999px';
-            container.style.top = '0';
-            container.innerHTML = state.paper.htmlContent;
-            document.body.appendChild(container);
-            
-            // Try to find the root div created by htmlGenerator
-            const contentRoot = container.querySelector('#paper-root') || container.children[0];
-            const children = Array.from(contentRoot?.children || []);
-            
-            const pages: string[] = [];
-            let current = ""; 
-            let h = 0;
-            const maxH = A4_HEIGHT_PX - 130; 
+    const paginate = useCallback(() => {
+        const container = document.createElement('div');
+        container.style.width = `${A4_WIDTH_PX - 140}px`;
+        container.style.fontFamily = state.styles.fontFamily;
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        
+        // Generate content based on mode
+        const htmlContent = generateHtmlFromPaperData(state.paper, { 
+            logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
+            isAnswerKey: isAnswerKeyMode
+        });
+        
+        container.innerHTML = htmlContent;
+        document.body.appendChild(container);
+        
+        const contentRoot = container.querySelector('#paper-root') || container.children[0];
+        const children = Array.from(contentRoot?.children || []);
+        
+        const pages: string[] = [];
+        let current = ""; 
+        let h = 0;
+        const maxH = A4_HEIGHT_PX - 140; 
 
-            children.forEach(child => {
-                const el = child as HTMLElement;
-                const elH = el.getBoundingClientRect().height + 8;
-                if (h + elH > maxH && current) { 
-                    pages.push(current); 
-                    current = ""; h = 0; 
-                }
-                current += el.outerHTML; 
-                h += elH;
-            });
-            if (current) pages.push(current);
-            document.body.removeChild(container);
-            setPagesHtml(pages.length ? pages : ['<p>No content generated. Please try again with different parameters.</p>']);
-            
-            setTimeout(() => triggerMath(pagesContainerRef.current), 100);
-        };
+        children.forEach(child => {
+            const el = child as HTMLElement;
+            const elH = el.getBoundingClientRect().height + 12;
+            if (h + elH > maxH && current) { 
+                pages.push(current); 
+                current = ""; h = 0; 
+            }
+            current += el.outerHTML; 
+            h += elH;
+        });
+        if (current) pages.push(current);
+        document.body.removeChild(container);
+        setPagesHtml(pages.length ? pages : ['<p>Loading assessment content...</p>']);
+        
+        setTimeout(() => triggerMath(pagesContainerRef.current), 100);
+    }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
+
+    useEffect(() => {
         paginate();
-    }, [state.paper.htmlContent, state.styles.fontFamily]);
+    }, [paginate]);
 
     const handleExportPDF = async () => {
         if (isExporting) return;
@@ -105,7 +113,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
             
             if (!pageElements || pageElements.length === 0) {
-                alert("Nothing to export.");
+                alert("Assessment is empty.");
                 return;
             }
             
@@ -114,7 +122,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 triggerMath(el);
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 2.5, 
+                    scale: 3, // High resolution for professional print quality
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
@@ -125,10 +133,11 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 if (i > 0) pdf.addPage();
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
             }
-            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Exam_Paper.pdf`);
+            const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Export failed. Please check if your topics contain special characters that might be breaking the renderer.");
+            alert("Export failed. Memory limit reached or resource blocked.");
         } finally {
             setIsExporting(false);
         }
@@ -141,7 +150,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
-                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Update applied." }]);
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Applied updates." }]);
                 setTimeout(() => triggerMath(document.querySelector('.chat-scrollbar')), 100);
             }
         } catch (e) { console.error(e); }
@@ -151,7 +160,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick: onSaveAndExit,
         openExportModal: handleExportPDF,
+        openAnswerKeyModal: () => setIsAnswerKeyMode(prev => !prev),
         paperSubject: state.paper.subject,
+        isAnswerKeyMode
     }));
 
     return (
@@ -159,8 +170,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             {isExporting && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white text-center">
                     <SpinnerIcon className="w-20 h-20 mb-6 text-indigo-400" />
-                    <h2 className="text-2xl font-black tracking-tight">Generating Professional PDF</h2>
-                    <p className="text-slate-400 mt-2 max-w-sm px-4">Processing high-resolution layout and complex mathematical expressions...</p>
+                    <h2 className="text-2xl font-black tracking-tight">Generating Professional {isAnswerKeyMode ? 'Key' : 'Paper'}</h2>
+                    <p className="text-slate-400 mt-2 max-w-sm px-4">Processing high-resolution board layout and complex LaTeX expressions...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -170,7 +181,21 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                     <button onClick={() => setSidebarView('gallery')} className={`flex-1 p-3 text-xs font-black uppercase tracking-tighter ${sidebarView === 'gallery' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><GalleryIcon className="w-4 h-4 mx-auto"/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto">
-                    {sidebarView === 'toolbar' && <EditorSidebar styles={state.styles} onStyleChange={(k,v) => setState(s=>({...s, styles:{...s.styles, [k]:v}}))} logo={state.logo} watermark={state.watermark} onBrandingUpdate={u=>setState(s=>({...s, ...u}))} onOpenImageModal={()=>{}} onUploadImageClick={()=>{}} paperSize="a4" onPaperSizeChange={()=>{}} />}
+                    {sidebarView === 'toolbar' && (
+                        <EditorSidebar 
+                            styles={state.styles} 
+                            onStyleChange={(k,v) => setState(s=>({...s, styles:{...s.styles, [k]:v}}))} 
+                            logo={state.logo} 
+                            watermark={state.watermark} 
+                            onBrandingUpdate={u=>setState(s=>({...s, ...u}))} 
+                            onOpenImageModal={()=>{}} 
+                            onUploadImageClick={()=>{}} 
+                            paperSize="a4" 
+                            onPaperSizeChange={()=>{}}
+                            isAnswerKeyMode={isAnswerKeyMode}
+                            onToggleShowQuestions={() => setIsAnswerKeyMode(p => !p)}
+                        />
+                    )}
                     {sidebarView === 'chat' && <CoEditorChat messages={coEditorMessages} isTyping={isCoEditorTyping} onSendMessage={handleCoEditorSend} />}
                     {sidebarView === 'gallery' && <ImageGallery onEditImage={()=>{}} isCompact />}
                 </div>

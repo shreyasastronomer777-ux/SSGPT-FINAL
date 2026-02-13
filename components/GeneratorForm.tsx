@@ -80,21 +80,21 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
 
   const handleTrySample = () => {
     setFormData({
-        schoolName: "Imperial Heights Global School",
-        className: "7th Grade",
+        schoolName: "St. Xavier's International Academy",
+        className: "Class 12",
         subject: "Physics",
-        topics: "Motion, Force, Laws of Motion, Friction",
+        topics: "Quantum Mechanics, Atomic Physics, Wave Optics, Semiconductors",
         language: "English",
-        timeAllowed: "2 Hours",
+        timeAllowed: "3 Hours",
         sourceMaterials: "",
         sourceMode: "reference",
-        modelQuality: "flash"
+        modelQuality: "pro"
     });
     setQuestionDistribution([
-        { id: `sample-1`, type: QuestionType.MultipleChoice, count: 10, marks: 1, difficulty: Difficulty.Easy, taxonomy: Taxonomy.Remembering },
-        { id: `sample-2`, type: QuestionType.TrueFalse, count: 5, marks: 1, difficulty: Difficulty.Easy, taxonomy: Taxonomy.Understanding },
-        { id: `sample-3`, type: QuestionType.ShortAnswer, count: 5, marks: 2, difficulty: Difficulty.Medium, taxonomy: Taxonomy.Applying },
-        { id: `sample-4`, type: QuestionType.LongAnswer, count: 2, marks: 5, difficulty: Difficulty.Hard, taxonomy: Taxonomy.Analyzing }
+        { id: `sample-1`, type: QuestionType.MultipleChoice, count: 10, marks: 1, difficulty: Difficulty.Medium, taxonomy: Taxonomy.Understanding },
+        { id: `sample-2`, type: QuestionType.MatchTheFollowing, count: 2, marks: 5, difficulty: Difficulty.Hard, taxonomy: Taxonomy.Analyzing },
+        { id: `sample-3`, type: QuestionType.ShortAnswer, count: 5, marks: 3, difficulty: Difficulty.Medium, taxonomy: Taxonomy.Applying },
+        { id: `sample-4`, type: QuestionType.LongAnswer, count: 3, marks: 5, difficulty: Difficulty.Hard, taxonomy: Taxonomy.Creating }
     ]);
     setErrors({});
   };
@@ -150,7 +150,7 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
   };
   
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>, index: number) => {
-      if (dragItemIndex.current !== null) {
+      if (dragItemIndex.current !== null && dragItemIndex.current !== index) {
           const newDistribution = [...questionDistribution];
           const draggedItemContent = newDistribution[dragItemIndex.current];
           newDistribution.splice(dragItemIndex.current, 1);
@@ -196,7 +196,7 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                         <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Generate Exam Paper</h2>
-                        <p className="mt-2 text-slate-600 dark:text-slate-400">Specify requirements or use AI power for any language.</p>
+                        <p className="mt-2 text-slate-600 dark:text-slate-400">Board-standard generation in 100+ languages.</p>
                     </div>
                     <div className="flex items-center gap-3">
                         <button type="button" onClick={handleTrySample} className="px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-bold rounded-full text-sm hover:bg-amber-200 transition-all border border-amber-200 dark:border-amber-800">
@@ -283,7 +283,7 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
                     <span className="ml-2 text-3xl font-black text-slate-900 dark:text-white">{totalMarks}</span>
                 </div>
                 <button type="submit" disabled={isLoading} className="w-full sm:w-auto px-12 py-4 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all text-xl disabled:opacity-50 flex items-center justify-center gap-2">
-                    {isLoading ? '✨ Generating...' : '✨ Generate Exam'}
+                    {isLoading ? '✨ Generating Assessment...' : '✨ Generate Exam'}
                 </button>
             </div>
         </form>
