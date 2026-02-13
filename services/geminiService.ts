@@ -38,6 +38,7 @@ Format:
 `;
 
     try {
+        // Fix: Updated model to gemini-3-flash-preview and simplified contents to direct string
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
@@ -54,7 +55,10 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     throw new Error("Internal Error Occurred");
   }
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceMode, sourceFiles } = formData;
+  const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceMode, sourceFiles, modelQuality } = formData;
+
+  // Fix: Updated models to use Gemini 3 series aliases
+  const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
   const questionRequests = questionDistribution
     .map(d => `- ${d.count} ${d.type} questions, each worth ${d.marks} marks. Difficulty: '${d.difficulty}', Taxonomy: '${d.taxonomy}'.`)
@@ -75,18 +79,20 @@ You are a professional Question Paper Designer. Generate a high-quality exam pap
 2. **DELIMITERS:** Use single dollar signs ($...$) for all inline math.
 3. **FRACTIONS:** NEVER use plain text fractions like "3/4". ALWAYS use $\\frac{3}{4}$.
 4. **SYMBOLS:** Use proper LaTeX: $\\times$ for multiply, $\\div$ for divide, $\\pm$ for plus-minus, $\\sqrt{x}$ for square roots, $\\pi$, $\\theta$, etc.
-5. **MCQ OPTIONS:** If options contain numbers or math, wrap them in LaTeX $...$.
+5. **MCQ OPTIONS:** If options contain numbers or math, you MUST wrap them in LaTeX $...$. E.g., options: ["$\\frac{1}{2}$", "$1.5$", "$-5$", "$\\pi$"].
 6. **DECIMALS & NEGATIVES:** Use LaTeX for decimals if part of equations (e.g., $0.5x$) and negative numbers (e.g., $-9$).
 
 **Paper Specifications:**
-- Subject: ${subject}, Class: ${className}, Topics: ${topics}
+- Subject: ${subject}
+- Class/Grade: ${className}
+- Topics: ${topics}
 - Language: ${language}
 ${sourceMaterialInstruction}
 
 **Required Question Mix:**
 ${questionRequests}
 
-Return ONLY a JSON array of objects conforming to the provided schema.
+Return ONLY a JSON array of objects conforming to the provided schema. Ensure 'options' for Multiple Choice is an array of 4 strings.
 `;
 
     const questionSchema = {
@@ -94,8 +100,8 @@ Return ONLY a JSON array of objects conforming to the provided schema.
         properties: {
             type: { type: Type.STRING, enum: Object.values(QuestionType) },
             questionText: { type: Type.STRING },
-            options: { type: Type.STRING },
-            answer: { type: Type.STRING },
+            options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Array of 4 options for MCQs, or null for others." },
+            answer: { type: Type.STRING, description: "The correct answer as a string." },
             marks: { type: Type.NUMBER },
             difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
             taxonomy: { type: Type.STRING, enum: Object.values(Taxonomy) },
@@ -111,9 +117,10 @@ Return ONLY a JSON array of objects conforming to the provided schema.
             }
         }
 
+        // Fix: Corrected contents structure to use { parts }
         const response = await ai.models.generateContent({
-            model: "gemini-3-pro-preview",
-            contents: [{ parts }],
+            model: modelToUse,
+            contents: { parts },
             config: { 
                 responseMimeType: "application/json",
                 responseSchema: { type: Type.ARRAY, items: questionSchema }
@@ -124,17 +131,12 @@ Return ONLY a JSON array of objects conforming to the provided schema.
         if (!Array.isArray(generatedQuestionsRaw)) throw new Error("Internal Error Occurred");
         
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => {
-            let parsedOptions: any = null;
-            if (q.options && typeof q.options === 'string' && (q.options.startsWith('[') || q.options.startsWith('{'))) {
-                try { parsedOptions = JSON.parse(q.options); } catch (e) { parsedOptions = null; }
-            } else {
-                parsedOptions = q.options || null;
-            }
-            let parsedAnswer: any = q.answer;
-            if (q.type === QuestionType.MatchTheFollowing && typeof q.answer === 'string' && q.answer.startsWith('{')) {
-                 try { parsedAnswer = JSON.parse(q.answer); } catch (e) {}
-            }
-            return { ...q, options: parsedOptions, answer: parsedAnswer, questionNumber: index + 1 };
+            return { 
+                ...q, 
+                options: q.options || null, 
+                answer: q.answer || '', 
+                questionNumber: index + 1 
+            };
         });
 
         const paperId = `paper-${Date.now()}`;
@@ -164,9 +166,10 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
   const analysisPrompt = `Analyze and structure the following exam text into JSON. CRITICAL: Rewrite all plain math/fractions to professional LaTeX $...$. Text: ${text}`;
 
   try {
+    // Fix: Updated model and simplified contents
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: analysisPrompt }] }],
+      contents: analysisPrompt,
       config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -180,9 +183,10 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
+    // Fix: Updated model and corrected contents structure
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: [{ parts: [...imageParts, { text: "OCR this and structure into JSON. Convert math to LaTeX $...$." }] }],
+        contents: { parts: [...imageParts, { text: "OCR this and structure into JSON. Convert math to LaTeX $...$." }] },
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -212,9 +216,10 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
+        // Fix: Simplified contents to direct string
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text }] }],
+            contents: text,
             config: {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -232,8 +237,9 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
 export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Fix: Updated model to gemini-3-pro-preview for editing tasks
     const chat = ai.chats.create({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-pro-preview",
         config: {
             systemInstruction: "You are an expert editor. For any math, ALWAYS use professional LaTeX $...$. Ensure fractions use \\frac{a}{b}.",
             tools: [{ functionDeclarations: [] }]
@@ -256,8 +262,9 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
+        // Fix: Updated model to gemini-3-pro-preview
         const response = await ai.models.generateContent({ 
-            model: "gemini-3-flash-preview", 
+            model: "gemini-3-pro-preview", 
             contents: `Translate this exam paper into ${targetLanguage}. Maintain all LaTeX strings $...$ exactly. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });
@@ -274,6 +281,7 @@ export const translateQuestionService = async (question: Question, targetLanguag
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
+        // Fix: Updated model to gemini-3-flash-preview
         const response = await ai.models.generateContent({ 
             model: "gemini-3-flash-preview", 
             contents: `Translate this question to ${targetLanguage}. Preserve all LaTeX math. Return JSON.`, 
