@@ -95,7 +95,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const uploaded = JSON.parse(data) as UploadedImage;
             const rect = e.currentTarget.getBoundingClientRect();
-            // Offset calculation to drop exactly at mouse tip
+            // Calculate coordinates relative to the target page element
             const x = e.clientX - rect.left - 75;
             const y = e.clientY - rect.top - 50;
             
