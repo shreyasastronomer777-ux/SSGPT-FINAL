@@ -46,7 +46,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "I'm your AI Editor. Use LaTeX like $5 \\times 4$ for math." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your paper. Use LaTeX like $5 \\times 4$ for math." }]);
         onReady();
     }, []);
 
@@ -83,20 +83,45 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pdfH = pdf.internal.pageSize.getHeight();
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
             
-            if (!pageElements) return;
+            if (!pageElements || pageElements.length === 0) {
+                alert("No content found to export.");
+                return;
+            }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
-                // Force math render check before capture
-                triggerMath(el);
-                const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                triggerMath(el); // Final check for math
+                const canvas = await html2canvas(el, { 
+                    scale: 2, 
+                    useCORS: true, 
+                    backgroundColor: '#ffffff',
+                    logging: false
+                });
+                const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             }
-            pdf.save(`${state.paper.subject}_Exam.pdf`);
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Exam.pdf`);
+        } catch (error) {
+            console.error("PDF Export Error:", error);
+            alert("Failed to export. Ensure all images are loaded.");
         } finally {
             setIsExporting(false);
         }
+    };
+
+    const handleCoEditorSend = async (msg: string) => {
+        if (!editingChat || isCoEditorTyping) return;
+        setCoEditorMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text: msg }]);
+        setIsCoEditorTyping(true);
+        try {
+            const res = await getAiEditResponse(editingChat, msg);
+            if (res.text) {
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Update applied." }]);
+                setTimeout(() => triggerMath(document.querySelector('.chat-scrollbar')), 100);
+            }
+        } catch (e) { console.error(e); }
+        finally { setIsCoEditorTyping(false); }
     };
 
     useImperativeHandle(ref, () => ({
@@ -108,20 +133,21 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     return (
         <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
             {isExporting && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex flex-col items-center justify-center text-white">
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-4 text-indigo-400" />
-                    <p className="text-xl font-black">Creating High-Quality PDF...</p>
+                    <p className="text-xl font-black">Building Professional PDF...</p>
+                    <p className="text-sm text-slate-400 mt-1">Rendering layout and mathematical expressions.</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
                 <div className="flex border-b dark:border-slate-800">
-                    <button onClick={() => setSidebarView('toolbar')} className={`flex-1 p-3 text-xs font-black uppercase ${sidebarView === 'toolbar' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Design</button>
-                    <button onClick={() => setSidebarView('chat')} className={`flex-1 p-3 text-xs font-black uppercase ${sidebarView === 'chat' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><AiIcon className="w-4 h-4 mx-auto"/></button>
-                    <button onClick={() => setSidebarView('gallery')} className={`flex-1 p-3 text-xs font-black uppercase ${sidebarView === 'gallery' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><GalleryIcon className="w-4 h-4 mx-auto"/></button>
+                    <button onClick={() => setSidebarView('toolbar')} className={`flex-1 p-3 text-xs font-black uppercase tracking-tighter ${sidebarView === 'toolbar' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Design</button>
+                    <button onClick={() => setSidebarView('chat')} className={`flex-1 p-3 text-xs font-black uppercase tracking-tighter ${sidebarView === 'chat' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><AiIcon className="w-4 h-4 mx-auto"/></button>
+                    <button onClick={() => setSidebarView('gallery')} className={`flex-1 p-3 text-xs font-black uppercase tracking-tighter ${sidebarView === 'gallery' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><GalleryIcon className="w-4 h-4 mx-auto"/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto">
                     {sidebarView === 'toolbar' && <EditorSidebar styles={state.styles} onStyleChange={(k,v) => setState(s=>({...s, styles:{...s.styles, [k]:v}}))} logo={state.logo} watermark={state.watermark} onBrandingUpdate={u=>setState(s=>({...s, ...u}))} onOpenImageModal={()=>{}} onUploadImageClick={()=>{}} paperSize="a4" onPaperSizeChange={()=>{}} />}
-                    {sidebarView === 'chat' && <CoEditorChat messages={coEditorMessages} isTyping={isCoEditorTyping} onSendMessage={async (msg)=>{}} />}
+                    {sidebarView === 'chat' && <CoEditorChat messages={coEditorMessages} isTyping={isCoEditorTyping} onSendMessage={handleCoEditorSend} />}
                     {sidebarView === 'gallery' && <ImageGallery onEditImage={()=>{}} isCompact />}
                 </div>
             </div>
@@ -132,6 +158,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                         <div className="prose max-w-none p-[70px] select-text" 
                              style={{ fontFamily: state.styles.fontFamily }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
+                        {state.images.filter(img => img.pageIndex === i).map(img => (
+                            <EditableImage key={img.id} imageState={img} onUpdate={u => setState(s => ({...s, images: s.images.map(x => x.id === u.id ? u : x)}))} onDelete={id => setState(s => ({...s, images: s.images.filter(x => x.id !== id)}))} onAiEdit={async ()=>{}} />
+                        ))}
                     </div>
                 ))}
             </main>
