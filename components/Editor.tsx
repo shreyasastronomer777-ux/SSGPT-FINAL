@@ -75,7 +75,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             setPagesHtml(pages.length ? pages : ['']);
             
             // Re-trigger math on newly paginated elements
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 200);
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 300);
         };
         paginate();
     }, [state.paper.htmlContent, state.styles]);

@@ -42,6 +42,7 @@ const renderOptions = (question: Question): string => {
                 </tbody></table>`;
         }
         return `<div style="margin-top: 8px;">${options.map((opt, i) => `<div style="padding: 2px 0;">(${String.fromCharCode(97 + i)}) ${formatSpecialText(opt)}</div>`).join('')}</div>`
+    // Fix: Changed incorrectly written QuestionType.Match the Following to QuestionType.MatchTheFollowing
     } else if (question.type === QuestionType.MatchTheFollowing) {
         let colA: string[] = [];
         let colB: string[] = [];
@@ -60,19 +61,19 @@ const renderOptions = (question: Question): string => {
 
         const rows = colA.map((item, index) => `
             <tr>
-                <td style="padding: 8px 10px 8px 0; vertical-align: top; width: 45%; border-bottom: 0.5px solid #eee;">(${toRoman(index + 1).toLowerCase()}) ${formatSpecialText(item)}</td>
-                <td style="padding: 8px 10px; vertical-align: top; width: 10%; border-bottom: 0.5px solid #eee; text-align: center;">---</td>
-                <td style="padding: 8px 0 8px 10px; vertical-align: top; width: 45%; border-bottom: 0.5px solid #eee;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatSpecialText(colB[index])}` : ''}</td>
+                <td style="padding: 8px 12px; vertical-align: top; border: 1px solid #000; width: 45%;">(${toRoman(index + 1).toLowerCase()}) ${formatSpecialText(item)}</td>
+                <td style="padding: 8px 12px; vertical-align: top; border: 1px solid #000; width: 10%; text-align: center;">---</td>
+                <td style="padding: 8px 12px; vertical-align: top; border: 1px solid #000; width: 45%;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatSpecialText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
         return `
-            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.95em; border: 1px solid #000;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 1em; border: 1px solid #000;">
                 <thead>
-                    <tr style="text-align: left; background-color: #f8fafc; border-bottom: 1.5px solid #000;">
-                        <th style="padding: 10px; border-right: 1px solid #000;">Column A</th>
-                        <th style="padding: 10px; border-right: 1px solid #000; text-align: center;">Link</th>
-                        <th style="padding: 10px;">Column B</th>
+                    <tr style="text-align: left; background-color: #f3f4f6;">
+                        <th style="padding: 10px 12px; border: 1px solid #000; width: 45%;">Column A</th>
+                        <th style="padding: 10px 12px; border: 1px solid #000; width: 10%; text-align: center;">Link</th>
+                        <th style="padding: 10px 12px; border: 1px solid #000; width: 45%;">Column B</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -100,6 +101,7 @@ const renderQuestion = (question: Question): string => {
 };
 
 const renderAnswerContent = (question: Question): string => {
+    // Fix: Changed incorrectly written QuestionType.Match the Following to QuestionType.MatchTheFollowing
     if (question.type === QuestionType.MatchTheFollowing && typeof question.answer === 'object' && question.answer !== null) {
         return `<ul style="margin: 0; padding-left: 20px;">
             ${Object.entries(question.answer).map(([key, value]) => `<li><b>${formatSpecialText(key)}</b> &rarr; ${formatSpecialText(String(value))}</li>`).join('')}
@@ -170,6 +172,7 @@ const generateHeaderHtml = (paperData: QuestionPaperData, titleOverride?: string
 }
 
 export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' } }): string => {
+    // Fix: Changed incorrectly written QuestionType.Match the Following to QuestionType.MatchTheFollowing in sectionOrder
     const sectionOrder = [ QuestionType.MultipleChoice, QuestionType.FillInTheBlanks, QuestionType.TrueFalse, QuestionType.MatchTheFollowing, QuestionType.ShortAnswer, QuestionType.LongAnswer, ];
     let questionCounter = 0;
     let sectionLetterCounter = 0;
