@@ -31,12 +31,18 @@ export const VoiceConfigurator: React.FC<{ onConfigExtracted: (config: any) => v
                         source.connect(processor); processor.connect(inputAudioContext.destination);
                     },
                     onmessage: (m) => {
-                        if (m.serverContent?.inputTranscription) setTranscript(t => t + ' ' + m.serverContent!.inputTranscription!.text);
+                        if (m.serverContent?.inputTranscription) {
+                            setTranscript(t => t + ' ' + m.serverContent!.inputTranscription!.text);
+                        }
                     },
                     onerror: (e) => console.error(e),
                     onclose: () => { stream.getTracks().forEach(t => t.stop()); inputAudioContext.close(); }
                 },
-                config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, systemInstruction: "Transcribe the user requirements accurately." }
+                config: { 
+                    responseModalities: [Modality.AUDIO], 
+                    inputAudioTranscription: {}, 
+                    systemInstruction: "Transcribe the user requirements for an exam accurately. Just capture the details like subject, grade, topics, and marks distribution." 
+                }
             });
         } catch (err) { console.error(err); setIsActive(false); }
     };

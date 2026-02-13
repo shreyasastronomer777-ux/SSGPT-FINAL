@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
+import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part, GenerateContentResponse } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
 import { generateChatResponseStream, generateTextToSpeech } from '../services/geminiService';
 import { SpinnerIcon } from './icons/SpinnerIcon';
@@ -83,7 +83,10 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   useEffect(() => {
     if (!process.env.API_KEY) return;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    setChat(ai.chats.create({ model: 'gemini-3-flash-preview', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } }));
+    setChat(ai.chats.create({ 
+        model: 'gemini-2.5-flash', 
+        config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } 
+    }));
     outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
   }, []);
 
@@ -104,10 +107,63 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
           fullText += chunk.text;
           setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: fullText } : m));
         }
-        if (chunk.functionCalls?.length) onGenerate(chunk.functionCalls[0].args as FormData);
+        if (chunk.functionCalls?.length) {
+            onGenerate(chunk.functionCalls[0].args as FormData);
+        }
       }
     } catch (e) { console.error(e); }
     finally { setIsBotTyping(false); }
+  };
+
+  const startLiveSession = async (voice: VoiceOption) => {
+    setIsVoiceModalOpen(false); setIsLiveSessionActive(true);
+    setTranscript(''); setAiLiveTranscript('');
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const inputCtx = new AudioContext({ sampleRate: 16000 });
+    
+    sessionPromiseRef.current = ai.live.connect({
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+      callbacks: {
+        onopen: () => {
+          const source = inputCtx.createMediaStreamSource(stream);
+          const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+          processor.onaudioprocess = (e) => {
+            const pcmBlob = createBlob(e.inputBuffer.getChannelData(0));
+            sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob }));
+          };
+          source.connect(processor); processor.connect(inputCtx.destination);
+        },
+        onmessage: async (message: LiveServerMessage) => {
+          if (message.serverContent?.inputTranscription) setTranscript(t => t + message.serverContent!.inputTranscription!.text);
+          if (message.serverContent?.outputTranscription) setAiLiveTranscript(t => t + message.serverContent!.outputTranscription!.text);
+          if (message.serverContent?.turnComplete) { setTranscript(''); setAiLiveTranscript(''); }
+          
+          const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+          if (base64Audio) {
+            const outCtx = outputAudioContextRef.current!;
+            nextStartTime = Math.max(nextStartTime, outCtx.currentTime);
+            const buffer = await decodeAudioData(decode(base64Audio), outCtx, 24000, 1);
+            const source = outCtx.createBufferSource();
+            source.buffer = buffer; source.connect(outCtx.destination);
+            source.start(nextStartTime); nextStartTime += buffer.duration;
+            sourcesRef.current.add(source);
+            source.onended = () => sourcesRef.current.delete(source);
+          }
+          if (message.toolCall?.functionCalls?.length) {
+              onGenerate(message.toolCall.functionCalls[0].args as FormData);
+              endLiveSession();
+          }
+        },
+        onclose: () => { stream.getTracks().forEach(t => t.stop()); inputCtx.close(); setIsLiveSessionActive(false); }
+      },
+      config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.id } } }, systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }], inputAudioTranscription: {}, outputAudioTranscription: {} }
+    });
+  };
+
+  const endLiveSession = () => {
+    setIsLiveSessionActive(false);
+    sessionPromiseRef.current?.then(s => s.close());
   };
 
   const handleDictate = async () => {
@@ -136,48 +192,6 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
             onclose: () => { stream.getTracks().forEach(t => t.stop()); inputCtx.close(); setIsDictating(false); }
         },
         config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, systemInstruction: "Transcribe ONLY. Be silent." }
-    });
-  };
-
-  const startLiveSession = async (voice: VoiceOption) => {
-    setIsVoiceModalOpen(false); setIsLiveSessionActive(true);
-    setTranscript(''); setAiLiveTranscript('');
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const inputCtx = new AudioContext({ sampleRate: 16000 });
-    
-    sessionPromiseRef.current = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
-      callbacks: {
-        onopen: () => {
-          const source = inputCtx.createMediaStreamSource(stream);
-          const processor = inputCtx.createScriptProcessor(4096, 1, 1);
-          processor.onaudioprocess = (e) => {
-            const pcmBlob = createBlob(e.inputBuffer.getChannelData(0));
-            sessionPromiseRef.current?.then(s => s.sendRealtimeInput({ media: pcmBlob }));
-          };
-          source.connect(processor); processor.connect(inputCtx.destination);
-        },
-        onmessage: async (message: LiveServerMessage) => {
-          if (message.serverContent?.inputTranscription) setTranscript(t => t + message.serverContent!.inputTranscription!.text);
-          if (message.serverContent?.outputTranscription) setAiLiveTranscript(t => t + message.serverContent!.outputTranscription!.text);
-          if (message.serverContent?.turnComplete) { setTranscript(''); setAiLiveTranscript(''); }
-          
-          const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-          if (base64Audio) {
-            const outCtx = outputAudioContextRef.current!;
-            nextStartTime = Math.max(nextStartTime, outCtx.currentTime);
-            const buffer = await decodeAudioData(decode(base64Audio), outCtx, 24000, 1);
-            const source = outCtx.createBufferSource();
-            source.buffer = buffer; source.connect(outCtx.destination);
-            source.start(nextStartTime); nextStartTime += buffer.duration;
-            sourcesRef.current.add(source);
-          }
-          if (message.toolCall?.functionCalls?.length) onGenerate(message.toolCall.functionCalls[0].args as FormData);
-        },
-        onclose: () => { stream.getTracks().forEach(t => t.stop()); inputCtx.close(); setIsLiveSessionActive(false); }
-      },
-      config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.id } } }, systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }], inputAudioTranscription: {}, outputAudioTranscription: {} }
     });
   };
 
@@ -211,14 +225,31 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
             <p className="text-indigo-400 text-xl font-bold italic h-8">{transcript || "Listening..."}</p>
             <p className="text-white text-lg opacity-80 h-12 overflow-hidden">{aiLiveTranscript}</p>
           </div>
-          <button onClick={() => { setIsLiveSessionActive(false); sessionPromiseRef.current?.then(s => s.close()); }} className="mt-12 px-12 py-4 bg-red-600 text-white rounded-full font-black text-lg hover:scale-105 transition-transform shadow-xl shadow-red-900/40">End Voice Mode</button>
+          <button onClick={endLiveSession} className="mt-12 px-12 py-4 bg-red-600 text-white rounded-full font-black text-lg hover:scale-105 transition-transform shadow-xl shadow-red-900/40">End Voice Mode</button>
         </div>
       )}
     </div>
   );
 };
 
-const createBlob = (d: Float32Array) => { const i16 = new Int16Array(d.length); for(let i=0; i<d.length; i++) i16[i] = d[i]*32768; return { data: btoa(Array.from(new Uint8Array(i16.buffer)).map(c => String.fromCharCode(c)).join('')), mimeType: 'audio/pcm;rate=16000' }; };
+// Encoding/Decoding helpers
+const createBlob = (d: Float32Array) => { 
+    const i16 = new Int16Array(d.length); 
+    for(let i=0; i<d.length; i++) i16[i] = d[i]*32768; 
+    return { 
+        data: btoa(Array.from(new Uint8Array(i16.buffer)).map(c => String.fromCharCode(c)).join('')), 
+        mimeType: 'audio/pcm;rate=16000' 
+    }; 
+};
 const decode = (s: string) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function decodeAudioData(data: Uint8Array, ctx: AudioContext, rate: number, ch: number) { const i16 = new Int16Array(data.buffer); const buf = ctx.createBuffer(ch, i16.length/ch, rate); for(let c=0; c<ch; c++) { const d = buf.getChannelData(c); for(let i=0; i<d.length; i++) d[i] = i16[i*ch+c]/32768.0; } return buf; }
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, rate: number, ch: number) { 
+    const i16 = new Int16Array(data.buffer); 
+    const buf = ctx.createBuffer(ch, i16.length/ch, rate); 
+    for(let c=0; c<ch; c++) { 
+        const d = buf.getChannelData(c); 
+        for(let i=0; i<d.length; i++) d[i] = i16[i*ch+c]/32768.0; 
+    } 
+    return buf; 
+}
+
 export default ChatbotInterface;

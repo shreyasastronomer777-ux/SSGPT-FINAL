@@ -5,20 +5,38 @@ export { generateHtmlFromPaperData };
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    throw new Error("Internal Error Occurred");
+    if (error?.message?.includes("Safety")) {
+        throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
+    }
+    throw new Error(`AI Generation Failed (${context}). Stability check: Using Gemini 2.5 series models.`);
+};
+
+/**
+ * Robustly cleans and parses JSON from AI responses, handling markdown artifacts.
+ */
+const parseAiJson = (text: string) => {
+    try {
+        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanedText);
+    } catch (e) {
+        console.error("JSON Parse Error. Raw text:", text);
+        throw new Error("The AI returned an invalid response format. Using Gemini 2.5 might require a slightly different prompt structure if errors persist.");
+    }
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Extract exam configuration from: "${transcript}". Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy}]}. Use LaTeX with double backslashes for any math.`;
+    const prompt = `Extract academic configuration from: "${transcript}". 
+    Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
+    Use LaTeX with double backslashes for any math.`;
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
-        return JSON.parse(response.text);
+        return parseAiJson(response.text);
     } catch (error) {
         handleApiError(error, "extractConfigFromTranscript");
     }
@@ -27,34 +45,48 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, modelQuality } = formData;
-    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+    const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
+    
+    // Using Gemini 2.5 series as requested for fix
+    const modelToUse = modelQuality === 'pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
 
     const finalPrompt = `
-You are an expert Question Paper Designer. Generate a high-quality exam paper in JSON.
+You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
 
-**STRICT MATHEMATICAL FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use LaTeX for ALL formulas, fractions, variables, and symbols (multiplication $\\times$, division $\\div$, etc.).
-2. **DELIMITERS:** Wrap ALL math content in single dollar signs: $...$.
-3. **JSON ESCAPING (MANDATORY):** In the JSON output strings, you MUST use DOUBLE BACKSLASHES (e.g. \\\\frac, \\\\times) for all LaTeX commands. If you use a single backslash like \times, it will be lost during JSON parsing.
-   - CORRECT: "$\\times$", "$\\frac{3}{5}$", "$\\sqrt{x}$".
-   - INCORRECT: "\times", "\frac{3}{5}".
+**CORE LANGUAGE REQUIREMENT:**
+- Generate the ENTIRE assessment (questions, options, matches, solutions) strictly in: **${language}**.
+- Use formal academic tone and precise subject terminology appropriate for ${className}.
 
-**STRUCTURAL RULES:**
-- DO NOT include numbering like "1. ", "2. " inside the "questionText" or MTF item strings. The system handles numbering automatically.
-- MATCH THE FOLLOWING: The "options" field MUST be: {"columnA": ["item1", "item2"...], "columnB": ["matchB", "matchA"...]}. Shuffle Column B.
+**MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
+1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
+2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
+3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
 
-Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
-Question mix: ${JSON.stringify(questionDistribution)}
-${sourceMaterials ? `Source Material: ${sourceMaterials}` : ''}
+**QUESTION STRUCTURE RULES:**
+- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
+- **Multiple Choice:** Return exactly 4 options as a plain array of strings.
+- **Match the Following:** Return an object for 'options': {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. Column B MUST be shuffled.
+- **Answer Key:** The "answer" field must contain a detailed model solution or the correct choice.
 
-Return JSON array of objects following the defined schema.
+**PAPER PARAMETERS:**
+Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Total Marks: ${totalMarks} | Time: ${timeAllowed}
+Mix: ${JSON.stringify(questionDistribution)}
+${sourceMaterials ? `Context: ${sourceMaterials}` : ''}
+
+Return only a valid JSON array of question objects.
 `;
 
     try {
+        const parts: Part[] = [{ text: finalPrompt }];
+        if (sourceFiles) {
+            for (const file of sourceFiles) {
+                parts.push({ inlineData: { data: file.data, mimeType: file.mimeType } });
+            }
+        }
+
         const response = await ai.models.generateContent({
             model: modelToUse,
-            contents: finalPrompt,
+            contents: { parts },
             config: { 
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -64,26 +96,24 @@ Return JSON array of objects following the defined schema.
                         properties: {
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
-                            options: { 
-                                type: Type.OBJECT, 
-                                properties: { 
-                                    columnA: { type: Type.ARRAY, items: { type: Type.STRING } }, 
-                                    columnB: { type: Type.ARRAY, items: { type: Type.STRING } } 
-                                },
-                                nullable: true
-                            },
+                            options: { description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching." },
                             answer: { type: Type.STRING },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
-                            taxonomy: { type: Type.STRING },
+                            taxonomy: { type: Type.STRING }
                         },
-                        required: ['type', 'questionText', 'answer', 'marks', 'difficulty', 'taxonomy']
+                        required: ["type", "questionText", "marks", "answer"]
                     }
                 }
             }
         });
 
-        const generatedQuestionsRaw = JSON.parse(response.text) as any[];
+        const generatedQuestionsRaw = parseAiJson(response.text);
+        
+        if (!Array.isArray(generatedQuestionsRaw) || generatedQuestionsRaw.length === 0) {
+            throw new Error("AI failed to produce content for the paper.");
+        }
+
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
             ...q,
             options: q.options || null,
@@ -97,7 +127,8 @@ Return JSON array of objects following the defined schema.
             timeAllowed, questions: processedQuestions, htmlContent: '', createdAt: new Date().toISOString(),
         };
         
-        return { ...structuredPaperData, htmlContent: generateHtmlFromPaperData(structuredPaperData) };
+        structuredPaperData.htmlContent = generateHtmlFromPaperData(structuredPaperData);
+        return structuredPaperData;
     } catch (error) {
         handleApiError(error, "generateQuestionPaper");
         throw error;
@@ -126,64 +157,13 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
 export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const tools: FunctionDeclaration[] = [
-        {
-            name: 'addQuestion',
-            description: 'Insert a new question. Use DOUBLE backslashes for LaTeX commands.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    type: { type: Type.STRING, enum: Object.values(QuestionType) },
-                    questionText: { type: Type.STRING },
-                    options: { 
-                        type: Type.OBJECT, 
-                        properties: { 
-                            columnA: { type: Type.ARRAY, items: { type: Type.STRING } }, 
-                            columnB: { type: Type.ARRAY, items: { type: Type.STRING } } 
-                        } 
-                    },
-                    answer: { type: Type.STRING },
-                    marks: { type: Type.NUMBER },
-                },
-                required: ['type', 'questionText', 'answer', 'marks']
-            }
-        },
-        {
-            name: 'updateQuestion',
-            description: 'Modify an existing question content.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    questionNumber: { type: Type.NUMBER },
-                    updates: {
-                        type: Type.OBJECT,
-                        properties: {
-                            questionText: { type: Type.STRING },
-                            answer: { type: Type.STRING },
-                            marks: { type: Type.NUMBER },
-                        }
-                    }
-                },
-                required: ['questionNumber', 'updates']
-            }
-        },
-        {
-            name: 'deleteQuestion',
-            description: 'Remove a question.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: { questionNumber: { type: Type.NUMBER } },
-                required: ['questionNumber']
-            }
-        }
-    ];
     return ai.chats.create({
-        model: "gemini-3-pro-preview",
+        model: "gemini-2.5-pro",
         config: {
-            systemInstruction: `You are an expert exam editor. Use tools to modify the paper based on user requests. 
-            STRICT MATH: Use LaTeX commands with DOUBLE backslashes in tool arguments (e.g. "$\\times$"). 
-            DO NOT add repetitive numbering like "1. " in question text.`,
-            tools: [{ functionDeclarations: tools }]
+            systemInstruction: `You are an expert academic editor.
+            STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
+            NO REDUNDANT NUMBERING: The system handles all layout numbering. 
+            Preserve the paper's original language strictly.`
         }
     });
 };
@@ -205,7 +185,7 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: text,
+        contents: [{ parts: [{ text }] }],
         config: {
             responseModalities: [Modality.AUDIO],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -218,20 +198,20 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `OCR/Analyze this text into JSON. Math must be LaTeX with double backslashes and wrapped in $ delimiters. Text: ${text}`,
+        model: "gemini-2.5-flash",
+        contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(response.text) as AnalysisResult;
+    return parseAiJson(response.text) as AnalysisResult;
 };
 
 export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<AnalysisResult> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: { parts: [...imageParts, { text: "OCR this handwritten exam to JSON. Use LaTeX math with double backslashes and wrap in $ delimiters." }] },
+        model: "gemini-2.5-flash",
+        contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes for all math formulas." }] },
         config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(response.text) as AnalysisResult;
+    return parseAiJson(response.text) as AnalysisResult;
 };
