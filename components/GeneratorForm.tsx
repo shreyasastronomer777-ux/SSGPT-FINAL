@@ -67,7 +67,6 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; data: string; mimeType: string; }[]>([]);
 
   const dragItemIndex = useRef<number | null>(null);
-  const dragOverItemIndex = useRef<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
   const totalMarks = useMemo(() => {
@@ -100,48 +99,6 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
           }));
           setQuestionDistribution(newDist);
       }
-  };
-
-  const blobToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-            resolve(reader.result.split(',')[1]);
-        } else {
-            reject(new Error('Failed to read file as data URL.'));
-        }
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    for (const file of Array.from(files) as File[]) {
-        if (file.size > 20 * 1024 * 1024) { 
-            alert(`File ${file.name} is too large. Please keep files under 20MB.`);
-            continue;
-        }
-
-        if (file.type.startsWith('text/')) {
-            const text = await file.text();
-            setFormData(prev => ({
-                ...prev,
-                sourceMaterials: (prev.sourceMaterials ? prev.sourceMaterials + `\n\n--- CONTENT FROM ${file.name} ---\n\n` : '') + text
-            }));
-        } else {
-            try {
-                const base64Data = await blobToBase64(file);
-                setAttachedFiles(prev => [...prev.filter(f => f.name !== file.name), { name: file.name, data: base64Data, mimeType: file.type }]);
-            } catch (error) {
-                console.error(`Error processing file ${file.name}:`, error);
-            }
-        }
-    }
-
-    if (event.target) event.target.value = '';
   };
 
   const handleDistributionChange = (id: string, field: keyof Omit<QuestionDistributionItem, 'id'>, value: string | number) => {
@@ -250,7 +207,6 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
                     <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">2. Questions Configuration</h3>
                     <div className="space-y-3">
                         {questionDistribution.map((dist, index) => (
-                             // Fix: Added missing event parameter 'e' to the onDragEnter callback to resolve 'Cannot find name e'.
                              <div key={dist.id} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={e => e.preventDefault()}
                                 className={`flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border dark:border-slate-700/50 transition-shadow ${draggingIndex === index ? 'opacity-30' : ''}`}
                              >

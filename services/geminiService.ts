@@ -29,25 +29,31 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, modelQuality } = formData;
     
-    // As per specific request: shift to gemini 3 series
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are a Senior Question Paper Designer for high-stakes national exams. Generate a high-quality exam paper in JSON.
+You are a Senior Academic Examiner for national-level boards. Generate a professional examination paper in JSON format.
 
-**STRICT FORMATTING RULES:**
-1. **NO AUTO-NUMBERING:** Do NOT include any numbering (e.g., "1.", "Q1.") or prefixes (e.g., "Column A:") inside text fields.
-2. **LATEX FOR MATH:** Use LaTeX for ALL formulas/symbols ($\\times$, $\\div$, $\\frac{a}{b}$). Wrap in single dollar signs $...$.
-3. **JSON ESCAPING (CRITICAL):** Use DOUBLE BACKSLASHES in the JSON string for LaTeX (e.g. "\\\\times").
-4. **MATCH THE FOLLOWING:** For this type, the "options" field MUST be an object: {"columnA": ["Item 1", "Item 2"], "columnB": ["Match B", "Match A"]}. DO NOT include "Column A" or "Column B" strings inside the arrays.
-5. **MULTIPLE CHOICE:** Provide exactly 4 options as a string array.
+**STRICT MATHEMATICAL FORMATTING (CRITICAL):**
+1. **LATEX FOR ALL MATH:** Use LaTeX for ALL math formulas, symbols (multiplication $\\times$, division $\\div$, plus/minus, etc.), variables ($x$, $y$), and fractions ($\\frac{a}{b}$).
+2. **DELIMITERS:** Wrap ALL math content in single dollar signs: $...$.
+3. **JSON ESCAPING (MANDATORY):** In the JSON output strings, you MUST use DOUBLE BACKSLASHES (e.g. \\\\times, \\\\frac{3}{5}) for all LaTeX commands.
+   - CORRECT: "$\\times$", "$\\frac{3}{5}$", "$\\sqrt{x}$".
+   - INCORRECT: "\times", "\frac{3}{5}".
+
+**STRUCTURAL RULES:**
+1. **NO AUTO-NUMBERING:** DO NOT include ANY numbering prefixes like "1. ", "Q1. ", "(i)", "a)", "Column A:" or "Column B:" inside the strings. The system handles numbering.
+2. **MATCH THE FOLLOWING:** The "options" field MUST be an object with two arrays: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. 
+   - Column B MUST be shuffled relative to Column A.
+   - Use LaTeX for any math within these items.
+3. **MULTIPLE CHOICE:** Provide exactly 4 options as a string array.
 
 **EXAM PARAMETERS:**
 Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Total Marks: ${totalMarks}, Time: ${timeAllowed}.
-Distribution: ${JSON.stringify(questionDistribution)}
-${sourceMaterials ? `Context: ${sourceMaterials}` : ''}
+Question mix: ${JSON.stringify(questionDistribution)}
+${sourceMaterials ? `Source Materials: ${sourceMaterials}` : ''}
 
-Return only a JSON array of question objects matching the schema.
+Return only a JSON array of question objects following the schema.
 `;
 
     try {
@@ -105,7 +111,10 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `You are an expert exam editor. Modify question content. Use LaTeX with double backslashes like "$\\\\times$".`
+            systemInstruction: `You are an expert exam editor. Modify the JSON structure. 
+            STRICT MATH: Always use LaTeX with double backslashes. 
+            MTF: options must be {columnA: [], columnB: []}. 
+            NO NUMBERING: Do not add redundant numbering to question text.`
         }
     });
 };
@@ -141,7 +150,7 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `OCR/Analyze this text into JSON. Math must be LaTeX with double backslashes. Text: ${text}`,
+        contents: `OCR/Analyze this text to JSON. Math MUST be LaTeX with DOUBLE backslashes ($...$). MTF options must be {columnA: [], columnB: []}. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -152,7 +161,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: { parts: [...imageParts, { text: "OCR this handwritten exam to JSON. Use LaTeX math with double backslashes." }] },
+        contents: { parts: [...imageParts, { text: "Analyze handwritten questions to JSON. Math MUST be LaTeX with double backslashes. MTF must use {columnA: [], columnB: []}." }] },
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;

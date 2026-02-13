@@ -17,13 +17,19 @@ const A4_HEIGHT_PX = 1123;
 
 const triggerMath = (el: HTMLElement | null) => {
     if (!el || !(window as any).renderMathInElement) return;
-    (window as any).renderMathInElement(el, {
-        delimiters: [
-            {left: '$$', right: '$$', display: true},
-            {left: '$', right: '$', display: false}
-        ],
-        throwOnError: false
-    });
+    try {
+        (window as any).renderMathInElement(el, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    } catch (e) {
+        console.warn("Math rendering failed during processing", e);
+    }
 };
 
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
@@ -46,7 +52,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your paper. Use LaTeX like $5 \\times 4$ for math." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your paper. Use LaTeX like $5 \\times 4$ for math. I've been optimized for Match the Following and crisp PDF exports." }]);
         onReady();
     }, []);
 
@@ -55,21 +61,31 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const container = document.createElement('div');
             container.style.width = `${A4_WIDTH_PX - 140}px`;
             container.style.fontFamily = state.styles.fontFamily;
+            container.style.position = 'absolute';
+            container.style.left = '-9999px';
             container.innerHTML = state.paper.htmlContent;
             document.body.appendChild(container);
+            
             const children = Array.from(container.children[0]?.children || []);
             const pages: string[] = [];
             let current = ""; let h = 0;
+            const maxH = A4_HEIGHT_PX - 140;
+
             children.forEach(child => {
                 const el = child as HTMLElement;
-                const elH = el.offsetHeight + 15;
-                if (h + elH > A4_HEIGHT_PX - 120 && current) { pages.push(current); current = ""; h = 0; }
-                current += el.outerHTML; h += elH;
+                const elH = el.offsetHeight + 10;
+                if (h + elH > maxH && current) { 
+                    pages.push(current); 
+                    current = ""; h = 0; 
+                }
+                current += el.outerHTML; 
+                h += elH;
             });
             if (current) pages.push(current);
             document.body.removeChild(container);
             setPagesHtml(pages.length ? pages : ['']);
-            setTimeout(() => triggerMath(pagesContainerRef.current), 50);
+            
+            setTimeout(() => triggerMath(pagesContainerRef.current), 100);
         };
         paginate();
     }, [state.paper.htmlContent, state.styles.fontFamily]);
@@ -81,30 +97,38 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
             const pdfH = pdf.internal.pageSize.getHeight();
-            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
+            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
             
             if (!pageElements || pageElements.length === 0) {
-                alert("No content found to export.");
+                alert("Nothing to export.");
                 return;
             }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
-                triggerMath(el); // Final check for math
+                // Force a sync math render before capture
+                triggerMath(el);
+                
                 const canvas = await html2canvas(el, { 
-                    scale: 2, 
+                    scale: 3, // High scale for professional quality
                     useCORS: true, 
                     backgroundColor: '#ffffff',
-                    logging: false
+                    logging: false,
+                    onclone: (clonedDoc) => {
+                        // Ensure cloned content is visible and math-ready
+                        const clonedEl = clonedDoc.querySelector('.paper-page-content');
+                        if (clonedEl) (clonedEl as HTMLElement).style.visibility = 'visible';
+                    }
                 });
+                
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'FAST');
             }
-            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Exam.pdf`);
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Final_Exam.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Failed to export. Ensure all images are loaded.");
+            alert("Export failed. Please ensure all images and math fonts are loaded.");
         } finally {
             setIsExporting(false);
         }
@@ -117,7 +141,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
-                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Update applied." }]);
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated applied." }]);
                 setTimeout(() => triggerMath(document.querySelector('.chat-scrollbar')), 100);
             }
         } catch (e) { console.error(e); }
@@ -133,10 +157,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     return (
         <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
             {isExporting && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-xl z-[100] flex flex-col items-center justify-center text-white">
-                    <SpinnerIcon className="w-16 h-16 mb-4 text-indigo-400" />
-                    <p className="text-xl font-black">Building Professional PDF...</p>
-                    <p className="text-sm text-slate-400 mt-1">Rendering layout and mathematical expressions.</p>
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white text-center">
+                    <SpinnerIcon className="w-20 h-20 mb-6 text-indigo-400" />
+                    <h2 className="text-2xl font-black tracking-tight">Generating Professional PDF</h2>
+                    <p className="text-slate-400 mt-2 max-w-sm">Capturing high-resolution frames, layout adjustments, and mathematical expressions.</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -153,10 +177,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             </div>
             <main className="flex-1 overflow-auto p-12 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
-                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-10 relative overflow-hidden" 
+                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-12 relative overflow-hidden" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, border: `${state.styles.borderWidth}px solid ${state.styles.borderColor}` }}>
-                        <div className="prose max-w-none p-[70px] select-text" 
-                             style={{ fontFamily: state.styles.fontFamily }} 
+                        <div className="paper-page-content prose max-w-none p-[75px] select-text" 
+                             style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                         {state.images.filter(img => img.pageIndex === i).map(img => (
                             <EditableImage key={img.id} imageState={img} onUpdate={u => setState(s => ({...s, images: s.images.map(x => x.id === u.id ? u : x)}))} onDelete={id => setState(s => ({...s, images: s.images.filter(x => x.id !== id)}))} onAiEdit={async ()=>{}} />

@@ -11,9 +11,11 @@ const escapeHtml = (unsafe: string | undefined): string => {
 }
 
 const stripNumbering = (text: string): string => {
+    // Robustly remove prefixes like "Column A:", "1.", "(i)", "a)" etc.
     return text.trim()
         .replace(/^(\(?[a-zA-Z0-9]{1,3}[\.\)]\s*)+/, '')
         .replace(/^[Qq]\d+\.?\s*/, '')
+        .replace(/^Column [AB]:?\s*/i, '')
         .replace(/\\n/g, ' ')
         .trim();
 };
@@ -67,15 +69,15 @@ const renderOptions = (question: Question): string => {
 
         const rows = colA.map((item, index) => `
             <tr>
-                <td style="padding: 10px; vertical-align: top; border: 1px solid #000; width: 50%;">(${toRoman(index + 1).toLowerCase()}) ${formatText(item)}</td>
-                <td style="padding: 10px; vertical-align: top; border: 1px solid #000; width: 50%;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
+                <td style="padding: 10px; border: 1px solid #000; width: 50%; vertical-align: middle;">(${toRoman(index + 1).toLowerCase()}) ${formatText(item)}</td>
+                <td style="padding: 10px; border: 1px solid #000; width: 50%; vertical-align: middle;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
         return `
-            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 1.5px solid #000;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 2px solid #000; font-size: 1.05em;">
                 <thead>
-                    <tr style="text-align: left; background-color: #f8fafc; border-bottom: 1.5px solid #000;">
+                    <tr style="text-align: left; background-color: #f8fafc; border-bottom: 2px solid #000;">
                         <th style="padding: 10px; border: 1px solid #000; width: 50%; font-weight: bold;">Column A</th>
                         <th style="padding: 10px; border: 1px solid #000; width: 50%; font-weight: bold;">Column B</th>
                     </tr>
@@ -88,23 +90,29 @@ const renderOptions = (question: Question): string => {
 
 const renderQuestion = (question: Question): string => {
     const optionsHtml = renderOptions(question);
-    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 1.8rem;">
+    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 2.2rem;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
-                        <td style="vertical-align: top; width: 35px; font-weight: bold; font-size: 1.1em;">${question.questionNumber}.</td>
-                        <td style="vertical-align: top; text-align: left; line-height: 1.5; font-size: 1.1em;">${formatText(question.questionText)}</td>
-                        <td style="vertical-align: top; text-align: right; width: 60px; font-weight: bold; font-size: 1.1em;">[${question.marks}]</td>
+                        <td style="vertical-align: top; width: 40px; font-weight: bold; font-size: 1.15em;">${question.questionNumber}.</td>
+                        <td style="vertical-align: top; text-align: left; line-height: 1.6; font-size: 1.15em;">${formatText(question.questionText)}</td>
+                        <td style="vertical-align: top; text-align: right; width: 70px; font-weight: bold; font-size: 1.15em;">[${question.marks}]</td>
                     </tr>
                 </tbody>
             </table>
-            ${optionsHtml ? `<div style="padding-left: 35px;">${optionsHtml}</div>` : ''}
+            ${optionsHtml ? `<div style="padding-left: 40px;">${optionsHtml}</div>` : ''}
         </div>`;
 };
 
-// Fix: Added optional options parameter to generateHtmlFromPaperData to match calls from App.tsx.
 export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?: any): string => {
-    const sectionOrder = [QuestionType.MultipleChoice, QuestionType.FillInTheBlanks, QuestionType.TrueFalse, QuestionType.MatchTheFollowing, QuestionType.ShortAnswer, QuestionType.LongAnswer];
+    const sectionOrder = [
+        QuestionType.MultipleChoice, 
+        QuestionType.FillInTheBlanks, 
+        QuestionType.TrueFalse, 
+        QuestionType.MatchTheFollowing, 
+        QuestionType.ShortAnswer, 
+        QuestionType.LongAnswer
+    ];
     let questionCounter = 0;
     let sectionCount = 0;
 
@@ -115,29 +123,31 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         const sectionTotal = qs.reduce((acc, q) => acc + q.marks, 0);
         
         return `
-            <div style="text-align: center; margin: 30px 0 10px; font-weight: 900; text-transform: uppercase; text-decoration: underline;">Section ${String.fromCharCode(64 + sectionCount)}</div>
-            <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 20px; font-weight: bold;">
-                <span>${toRoman(sectionCount)}. ${type} Questions</span>
-                <span>[${qs.length} &times; ${qs[0].marks} = ${sectionTotal} Marks]</span>
+            <div style="text-align: center; margin: 40px 0 15px; font-weight: 900; text-transform: uppercase; text-decoration: underline; font-size: 1.3em;">Section ${String.fromCharCode(64 + sectionCount)}</div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 2.5px solid #000; padding-bottom: 5px; margin-bottom: 25px; font-weight: bold;">
+                <span style="font-size: 1.2em;">${toRoman(sectionCount)}. ${type} Questions</span>
+                <span style="font-size: 1.1em;">[${qs.length} &times; ${qs[0].marks} = ${sectionTotal} Marks]</span>
             </div>
             ${qs.map(q => { questionCounter++; return renderQuestion({ ...q, questionNumber: questionCounter }); }).join('')}
         `;
     }).join('');
 
     return `
-        <div style="text-align: center; margin-bottom: 20px;">
-            <h2 style="margin: 0; font-size: 26px; font-weight: 900; text-transform: uppercase;">${escapeHtml(paperData.schoolName)}</h2>
-            <h3 style="margin: 5px 0; font-size: 20px; text-decoration: underline; font-weight: bold;">${escapeHtml(paperData.subject)}</h3>
-            <p style="margin: 2px 0; font-weight: bold; font-size: 1.2em;">Class: ${escapeHtml(paperData.className)}</p>
-            <hr style="border: 0; border-top: 3px solid #000; margin-top: 10px;">
-            <table style="width: 100%; margin: 8px 0; font-weight: bold; font-size: 1.1em;">
-                <tr>
-                    <td style="text-align: left;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
-                    <td style="text-align: right;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
-                </tr>
-            </table>
-            <hr style="border: 0; border-top: 2px solid #000; margin-bottom: 20px;">
+        <div style="font-family: 'Inter', 'Times New Roman', serif;">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <h2 style="margin: 0; font-size: 28px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">${escapeHtml(paperData.schoolName)}</h2>
+                <h3 style="margin: 8px 0; font-size: 22px; text-decoration: underline; font-weight: bold;">${escapeHtml(paperData.subject)}</h3>
+                <p style="margin: 5px 0; font-weight: bold; font-size: 1.3em;">Class: ${escapeHtml(paperData.className)}</p>
+                <hr style="border: 0; border-top: 3.5px solid #000; margin-top: 15px;">
+                <table style="width: 100%; margin: 10px 0; font-weight: bold; font-size: 1.2em;">
+                    <tr>
+                        <td style="text-align: left;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
+                        <td style="text-align: right;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
+                    </tr>
+                </table>
+                <hr style="border: 0; border-top: 2.5px solid #000; margin-bottom: 25px;">
+            </div>
+            ${sections}
         </div>
-        ${sections}
     `;
 };
