@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -163,9 +164,6 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
         const wrappedHtml = `<div>${fullHtml}</div>`;
         const newPaper = { ...paper, htmlContent: wrappedHtml };
         handleStateUpdate(s => ({ ...s, paper: newPaper }), true);
-        
-        // Retrigger math rendering after manual text edit
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
     }, 1000);
     
     const handleBrandingUpdate = (updates: Partial<{ logo: LogoState; watermark: WatermarkState }>) => {
@@ -237,7 +235,7 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
                 }
 
                 const w = uploadedImage.width && uploadedImage.width > 0 ? Math.min(uploadedImage.width, 300) : 300;
-                const h = uploadedImage.height && uploadedImage.height > 0 ? (w / uploadedImage.width) * uploadedImage.height : 300;
+                const h = (uploadedImage.width && uploadedImage.height) ? (w / uploadedImage.width) * uploadedImage.height : 300;
                 handleInsertGeneratedImage(uploadedImage.url, w, h, dropX, dropY, targetPageIndex);
             } catch (err) {
                 console.error("Failed to parse drop data", err);
@@ -273,7 +271,7 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
             stagingContainer.style.width = `${(paperSize === 'a4' ? A4_WIDTH_PX : LETTER_WIDTH_PX) - 140 - (styles.borderWidth * 2)}px`;
             stagingContainer.style.visibility = 'hidden';
             stagingContainer.style.fontFamily = styles.fontFamily;
-            stagingContainer.className = "paper-content-host prose dark:prose-invert max-w-none";
+            stagingContainer.className = "paper-content-host prose dark:prose-invert max-none";
             
             let contentToRender = '';
             if (viewMode === 'answerKey') {
@@ -309,8 +307,8 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
             document.body.removeChild(stagingContainer);
             setPagesHtml(pages.length ? pages : ['']);
             
-            // Trigger KaTeX after pages are generated
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 50);
+            // Re-trigger math rendering after pages are set
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
         };
 
         paginateContent();
@@ -443,11 +441,6 @@ const Editor = forwardRef<any, EditorProps>((props, ref) => {
             setIsCoEditorTyping(false);
         }
     };
-
-    useEffect(() => {
-        // Run math rendering whenever pages change or view mode changes
-        triggerMathRendering(pagesContainerRef.current);
-    }, [pagesHtml, viewMode]);
 
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick,
