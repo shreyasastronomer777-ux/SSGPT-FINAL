@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentParameters, GenerateContentResponse } from "@google/genai";
 import { type FormData, type QuestionPaperData, QuestionType, Question, Difficulty, Taxonomy, AnalysisResult, QuestionDistributionItem } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
@@ -69,24 +68,18 @@ ${sourceMode === 'strict' ? "Generate questions ONLY from provided materials." :
     : '';
 
   const finalPrompt = `
-You are a professional typesetter and Question Paper Designer for the Indian K-12 system (CBSE/ICSE standards).
-Generate a high-quality, professional exam paper.
+You are a professional Question Paper Designer. Generate a high-quality exam paper in JSON format.
 
-**LATEX FORMATTING RULES (CRITICAL):**
-1. **WRAP EVERYTHING:** ALL mathematical expressions, equations, formulas, fractions, decimals, negative numbers, and variables MUST be wrapped in single dollar signs like this: $...$.
-2. **FRACTIONS:** Use $\\frac{numerator}{denominator}$. NEVER use "1/2" or "3/4".
-3. **SYMBOLS:** Use $\\times$ for multiplication, $\\div$ for division, $\\pm$, $\\sqrt{x}$, $\\theta$, $\\pi$, etc.
-4. **NUMBERS IN MATH:** If a question is mathematical, even single numbers or units should be in LaTeX if they are part of an equation. E.g., "Find $x$ if $x + 5 = 10$".
-5. **MCQ OPTIONS:** If options are numeric, fractions, or contain variables, they MUST be wrapped in LaTeX $...$.
-
-**JSON STRUCTURE RULES:**
-- "options": For 'Multiple Choice', return a JSON-stringified array of 4 strings. For 'Match the Following', return a JSON-stringified object with 'columnA' and 'columnB' arrays. For others, return an empty string "".
-- "answer": For 'Match the Following', return a JSON-stringified object mapping Column A keys to Column B values.
+**STRICT MATHEMATICAL FORMATTING (MANDATORY):**
+1. **LATEX FOR ALL MATH:** You MUST use proper LaTeX syntax for ALL mathematical expressions, formulas, fractions, negative numbers, and variables.
+2. **DELIMITERS:** Use single dollar signs ($...$) for all inline math.
+3. **FRACTIONS:** NEVER use plain text fractions like "3/4". ALWAYS use $\\frac{3}{4}$.
+4. **SYMBOLS:** Use proper LaTeX: $\\times$ for multiply, $\\div$ for divide, $\\pm$ for plus-minus, $\\sqrt{x}$ for square roots, $\\pi$, $\\theta$, etc.
+5. **MCQ OPTIONS:** If options contain numbers or math, wrap them in LaTeX $...$.
+6. **DECIMALS & NEGATIVES:** Use LaTeX for decimals if part of equations (e.g., $0.5x$) and negative numbers (e.g., $-9$).
 
 **Paper Specifications:**
-- Subject: ${subject}
-- Class/Grade: ${className}
-- Topics: ${topics}
+- Subject: ${subject}, Class: ${className}, Topics: ${topics}
 - Language: ${language}
 ${sourceMaterialInstruction}
 
@@ -101,8 +94,8 @@ Return ONLY a JSON array of objects conforming to the provided schema.
         properties: {
             type: { type: Type.STRING, enum: Object.values(QuestionType) },
             questionText: { type: Type.STRING },
-            options: { type: Type.STRING, description: "JSON string representing array or object" },
-            answer: { type: Type.STRING, description: "Plain text or JSON string for Match the Following" },
+            options: { type: Type.STRING },
+            answer: { type: Type.STRING },
             marks: { type: Type.NUMBER },
             difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
             taxonomy: { type: Type.STRING, enum: Object.values(Taxonomy) },
@@ -132,17 +125,15 @@ Return ONLY a JSON array of objects conforming to the provided schema.
         
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => {
             let parsedOptions: any = null;
-            if (q.options && typeof q.options === 'string' && (q.options.trim().startsWith('[') || q.options.trim().startsWith('{'))) {
-                try { parsedOptions = JSON.parse(q.options); } catch (e) { parsedOptions = q.options; }
+            if (q.options && typeof q.options === 'string' && (q.options.startsWith('[') || q.options.startsWith('{'))) {
+                try { parsedOptions = JSON.parse(q.options); } catch (e) { parsedOptions = null; }
             } else {
                 parsedOptions = q.options || null;
             }
-            
             let parsedAnswer: any = q.answer;
-            if (q.type === QuestionType.MatchTheFollowing && typeof q.answer === 'string' && q.answer.trim().startsWith('{')) {
+            if (q.type === QuestionType.MatchTheFollowing && typeof q.answer === 'string' && q.answer.startsWith('{')) {
                  try { parsedAnswer = JSON.parse(q.answer); } catch (e) {}
             }
-            
             return { ...q, options: parsedOptions, answer: parsedAnswer, questionNumber: index + 1 };
         });
 
@@ -170,10 +161,7 @@ Return ONLY a JSON array of objects conforming to the provided schema.
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
   if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const analysisPrompt = `Analyze and structure the following exam text into JSON. 
-  CRITICAL: Convert ALL fractions and math to professional LaTeX $...$. 
-  Ensure questions, options, and metadata are extracted precisely.
-  Text: ${text}`;
+  const analysisPrompt = `Analyze and structure the following exam text into JSON. CRITICAL: Rewrite all plain math/fractions to professional LaTeX $...$. Text: ${text}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -194,7 +182,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   try {
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: [{ parts: [...imageParts, { text: "Perform OCR and structure this content into JSON. Convert all math formulas, variables, and fractions to LaTeX wrapped in single dollar signs $...$." }] }],
+        contents: [{ parts: [...imageParts, { text: "OCR this and structure into JSON. Convert math to LaTeX $...$." }] }],
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -247,7 +235,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     const chat = ai.chats.create({
         model: "gemini-3-flash-preview",
         config: {
-            systemInstruction: "You are an expert editor. For any math, ALWAYS use LaTeX wrapped in single dollar signs $...$. Use $\\frac{a}{b}$ for fractions. Guide the user in refining the exam paper.",
+            systemInstruction: "You are an expert editor. For any math, ALWAYS use professional LaTeX $...$. Ensure fractions use \\frac{a}{b}.",
             tools: [{ functionDeclarations: [] }]
         }
     });
@@ -270,7 +258,7 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     try {
         const response = await ai.models.generateContent({ 
             model: "gemini-3-flash-preview", 
-            contents: `Translate this exam paper into ${targetLanguage}. IMPORTANT: Keep ALL LaTeX strings $...$ exactly the same. Do not translate the text inside math delimiters. Return JSON.`, 
+            contents: `Translate this exam paper into ${targetLanguage}. Maintain all LaTeX strings $...$ exactly. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });
         const translatedContent = JSON.parse(response.text);
@@ -288,7 +276,7 @@ export const translateQuestionService = async (question: Question, targetLanguag
     try {
         const response = await ai.models.generateContent({ 
             model: "gemini-3-flash-preview", 
-            contents: `Translate this question to ${targetLanguage}. Preserve ALL LaTeX math $...$ exactly. Return JSON.`, 
+            contents: `Translate this question to ${targetLanguage}. Preserve all LaTeX math. Return JSON.`, 
             config: { responseMimeType: "application/json" } 
         });
         return { ...question, ...JSON.parse(response.text) };

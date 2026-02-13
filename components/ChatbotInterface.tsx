@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
@@ -15,85 +14,18 @@ type Message = { id: string; sender: 'bot' | 'user'; text: string; grounding?: a
 type AttachedFile = { name: string; data: string; mimeType: string; };
 type ConversationTurn = { user: string; ai: string; id: number };
 
-type AIModelConfig = {
-    id: string;
-    name: string;
-    modelName: string;
-    description: string;
-    icon: string;
-    useThinking?: boolean;
-};
-
-const MODELS: AIModelConfig[] = [
-    { 
-        id: 'ssgpt-1', 
-        name: 'SSGPT 1', 
-        modelName: 'gemini-2.5-flash', 
-        description: 'Fast & Reliable (Free Tier Optimised)', 
-        icon: '⚡' 
-    },
-    { 
-        id: 'ssgpt-1.5', 
-        name: 'SSGPT 1.5', 
-        modelName: 'gemini-2.5-pro', 
-        description: 'Balanced Reasoning', 
-        icon: '✨' 
-    },
-    { 
-        id: 'ssgpt-7', 
-        name: 'SSGPT 7', 
-        modelName: 'gemini-2.5-pro', 
-        description: 'Deep Thinking Mode', 
-        icon: '🧠',
-        useThinking: true
-    },
-];
-
 // --- Icons ---
 const CopyIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>);
 const NewChatIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg>);
 const SendIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" {...props}><path d="M3.4 20.4l17.45-7.48c.81-.35.81-1.49 0-1.84L3.4 3.6c-.66-.29-1.39.2-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"></path></svg>);
 const SpeakIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>);
-const ChevronDownIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m6 9 6 6 6-6"/></svg>);
 
-const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Collect academic details to generate an exam paper.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, topics: { type: Type.STRING }, timeAllowed: { type: Type.STRING }, questionDistribution: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING }, taxonomy: { type: Type.STRING } }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING } }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
-const systemInstruction = `You are SSGPT, an AI for educators. Help users create high-quality exams. 
+const generatePaperFunctionDeclaration: FunctionDeclaration = { name: 'generatePaper', description: 'Call this function to generate a complete exam paper once all details are ready.', parameters: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, topics: { type: Type.STRING }, timeAllowed: { type: Type.STRING }, questionDistribution: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING }, count: { type: Type.INTEGER }, marks: { type: Type.INTEGER }, difficulty: { type: Type.STRING }, taxonomy: { type: Type.STRING } }, required: ['type', 'count', 'marks', 'difficulty', 'taxonomy'] } }, language: { type: Type.STRING } }, required: ['schoolName', 'className', 'subject', 'topics', 'questionDistribution', 'language', 'timeAllowed'] } };
+const systemInstruction = `You are SSGPT, an AI for educators. Help users create exams. 
 
-**STRICT MATH FORMATTING:** 
-- For ALL mathematical content, including fractions, variables, and formulas, you MUST use professional LaTeX wrapped in single dollar signs: $...$. 
-- NEVER use plain text fractions like "1/2". ALWAYS use $\\frac{1}{2}$.
-- This applies to both your chat responses and the paper details you collect.
+**MATH RULES:** ALWAYS use LaTeX $...$ for all mathematical content, including fractions (\\frac{a}{b}), numeric variables, and symbols. NEVER use plain text math.
 
-**GUIDE:** Proactively ask for Subject, Class, Topics, and Question Distribution.`;
-
-const TypingIndicator: React.FC = () => (
-    <div className="flex items-end gap-3 justify-start animate-slide-in-left">
-        <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className="w-8 h-8 rounded-full self-start flex-shrink-0" />
-        <div className="px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 rounded-bl-none text-slate-800 dark:text-slate-200 shadow-md border border-slate-200 dark:border-slate-700/80">
-            <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
-            </div>
-        </div>
-    </div>
-);
-
-function parseMarkdownToHTML(text: string) {
-    let html = text.trim()
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    html = html.replace(/```([\s\S]*?)```/g, (match, code) => `<pre class="bg-slate-100 dark:bg-slate-900 p-2 rounded-md overflow-x-auto my-2"><code>${code.trim()}</code></pre>`);
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    html = html.replace(/^([ \t]*)([\*\-]) (.*$)/gm, (match, indent, bullet, content) => `${indent}<ul><li>${content}</li></ul>`);
-    html = html.replace(/<\/ul>\s*<ul>/g, '');
-    html = html.replace(/^([ \t]*)\d+\. (.*$)/gm, (match, indent, content) => `${indent}<ol><li>${content}</li></ol>`);
-    html = html.replace(/<\/ol>\s*<ol>/g, '');
-    html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />');
-    return html;
-}
+**GUIDE:** Collaboration gather: School, Class, Subject, Topics, Distribution. Use tool 'generatePaper' when ready.`;
 
 const triggerMathRendering = (element: HTMLElement | null) => {
     if (!element) return;
@@ -114,31 +46,22 @@ const triggerMathRendering = (element: HTMLElement | null) => {
     }
 };
 
-const ModelSelector: React.FC<{ selectedModelId: string; onSelect: (id: string) => void }> = ({ selectedModelId, onSelect }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const selectedModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    useEffect(() => { const handleClickOutside = (event: MouseEvent) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false); }; document.addEventListener("mousedown", handleClickOutside); return () => document.removeEventListener("mousedown", handleClickOutside); }, []);
-    return (
-        <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 px-3 py-1.5 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-all shadow-sm">
-                <span>{selectedModel.icon}</span> <span>{selectedModel.name}</span> <ChevronDownIcon className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border dark:border-slate-700 p-2 z-50 animate-zoom-in">
-                    <div className="space-y-1">
-                        {MODELS.map(model => (
-                            <button key={model.id} onClick={() => { onSelect(model.id); setIsOpen(false); }} className={`w-full text-left p-2 rounded-lg flex items-center gap-3 transition-colors ${selectedModelId === model.id ? 'bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500/30' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
-                                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg shadow-sm">{model.icon}</div>
-                                <div><p className={`text-sm font-bold ${selectedModelId === model.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>{model.name}</p><p className="text-xs text-slate-500 dark:text-slate-400">{model.description}</p></div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
+function parseMarkdownToHTML(text: string) {
+    // Preserve LaTeX while converting Markdown
+    let html = text.trim()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    html = html.replace(/```([\s\S]*?)```/g, (match, code) => `<pre class="bg-slate-100 dark:bg-slate-900 p-3 rounded-lg overflow-x-auto my-2"><code>${code.trim()}</code></pre>`);
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    html = html.replace(/^([ \t]*)([\*\-]) (.*$)/gm, (match, indent, bullet, content) => `${indent}<ul><li>${content}</li></ul>`);
+    html = html.replace(/<\/ul>\s*<ul>/g, '');
+    html = html.replace(/^([ \t]*)\d+\. (.*$)/gm, (match, indent, content) => `${indent}<ol><li>${content}</li></ol>`);
+    html = html.replace(/<\/ol>\s*<ol>/g, '');
+    html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />');
+    return html;
+}
 
 const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> = ({ onGenerate }) => {
   const [messages, setMessages] = useState<Message[]>([]); const [chat, setChat] = useState<Chat | null>(null); const [userInput, setUserInput] = useState(''); const [isBotTyping, setIsBotTyping] = useState(false); const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]); const messagesEndRef = useRef<HTMLDivElement>(null); const fileInputRef = useRef<HTMLInputElement>(null);
@@ -146,18 +69,14 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]); const [currentUserText, setCurrentUserText] = useState(''); const [currentAiText, setCurrentAiText] = useState(''); const userUtteranceRef = useRef(''); const aiUtteranceRef = useRef(''); const conversationEndRef = useRef<HTMLDivElement>(null);
   const [useSearch, setUseSearch] = useState(false); const [useThinking, setUseThinking] = useState(false);
   const audioPlaybackSource = useRef<AudioBufferSourceNode | null>(null);
-  const [selectedModelId, setSelectedModelId] = useState('ssgpt-1');
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const initChat = useCallback(async () => {
     setIsBotTyping(true); setMessages([]);
     try {
       if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
-      const selectedModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const config: any = { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] };
-      if (selectedModel.useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
-      const newChat = ai.chats.create({ model: selectedModel.modelName, config });
+      const newChat = ai.chats.create({ model: 'gemini-3-flash-preview', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
       setChat(newChat);
       const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
       const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
@@ -165,15 +84,13 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
     } catch (error) { setMessages([{ id: 'bot-error', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
-  }, [selectedModelId]);
+  }, []);
     
   useEffect(() => { initChat(); outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }); return () => { isLiveSessionActive && sessionPromiseRef.current?.then(session => session.close()); }; }, [initChat]);
 
-  // Trigger math rendering on message update
+  // Math rendering effect
   useEffect(() => {
-    const timer = setTimeout(() => {
-        triggerMathRendering(chatContainerRef.current);
-    }, 150);
+    const timer = setTimeout(() => triggerMathRendering(chatContainerRef.current), 150);
     return () => clearTimeout(timer);
   }, [messages, isBotTyping]);
 
@@ -199,9 +116,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     } finally { setIsBotTyping(false); }
   };
   
-  const handleTriggerGeneration = (args: any) => { 
-    onGenerate(args as FormData); 
-  };
+  const handleTriggerGeneration = (args: any) => { onGenerate(args as FormData); };
   
   const startLiveSession = async (voice: VoiceOption) => {
     setIsVoiceModalOpen(false); setIsLiveSessionActive(true); setConversationHistory([]); userUtteranceRef.current = ''; aiUtteranceRef.current = '';
@@ -217,7 +132,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
             if (message.serverContent?.turnComplete) { if (userUtteranceRef.current || aiUtteranceRef.current) setConversationHistory(prev => [...prev, { user: userUtteranceRef.current, ai: aiUtteranceRef.current, id: Date.now() }]); userUtteranceRef.current = ''; aiUtteranceRef.current = ''; }
             if (message.toolCall?.functionCalls?.[0]?.name === 'generatePaper') { handleTriggerGeneration(message.toolCall.functionCalls[0].args); endLiveSession(); return; }
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (base64Audio) { setIsAiSpeaking(true); const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current!, 24000, 1); const source = outputAudioContextRef.current!.createBufferSource(); source.buffer = audioBuffer; source.connect(outputAudioContextRef.current!.destination); source.addEventListener('ended', () => { if(outputAudioContextRef.current) setIsAiSpeaking(false); }); source.start(nextStartTime); nextStartTime = nextStartTime + audioBuffer.duration; }
+            if (base64Audio) { setIsAiSpeaking(true); const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current!, 24000, 1); const source = outputAudioContextRef.current!.createBufferSource(); source.buffer = audioBuffer; source.connect(outputAudioContextRef.current!.destination); source.addEventListener('ended', () => { setIsAiSpeaking(false); }); source.start(nextStartTime); nextStartTime = nextStartTime + audioBuffer.duration; }
         },
         onerror: (e) => { setCurrentUserText("Internal Error Occurred"); endLiveSession(); },
         onclose: () => { stream?.getTracks().forEach(t => t.stop()); inputAudioContext.close(); },
@@ -228,8 +143,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   const endLiveSession = () => { sessionPromiseRef.current?.then(s => s.close()); setIsLiveSessionActive(false); };
 
   const MessageBubble: React.FC<{ message: Message }> = ({ message }) => (
-    <div className={`flex items-start gap-3 w-full ${message.sender === 'user' ? 'justify-end animate-slide-in-right' : 'justify-start animate-slide-in-left'}`}>
-        {message.sender === 'bot' && <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className="w-8 h-8 rounded-full flex-shrink-0" />}
+    <div className={`flex items-start gap-3 w-full ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+        {message.sender === 'bot' && <img src={SSGPT_LOGO_URL} alt="SSGPT" className="w-8 h-8 rounded-full" />}
         <div className={`prose-chat px-4 py-3 rounded-2xl max-w-xl shadow-md border ${message.sender === 'bot' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200' : 'bg-green-100 dark:bg-green-900/40'}`}>
             <div dangerouslySetInnerHTML={{ __html: parseMarkdownToHTML(message.text) }} />
         </div>
@@ -238,37 +153,21 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
 
   return (
     <div className="relative flex flex-col h-full w-full bg-slate-50 dark:bg-black" ref={chatContainerRef}>
-        <div className="absolute top-4 left-4 z-20 flex gap-2">
-            <button onClick={initChat} className="w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg></button>
-            <ModelSelector selectedModelId={selectedModelId} onSelect={setSelectedModelId} />
-        </div>
         <div className="flex-1 p-4 space-y-6 overflow-y-auto">
             <div className="max-w-3xl mx-auto w-full space-y-6">
                 {messages.map(m => <MessageBubble key={m.id} message={m} />)}
-                {isBotTyping && <TypingIndicator />}
+                {isBotTyping && <div className="p-4"><SpinnerIcon className="w-6 h-6 animate-spin text-indigo-600" /></div>}
             </div>
             <div ref={messagesEndRef} />
         </div>
         <div className="p-4 bg-white dark:bg-black">
             <div className="max-w-3xl mx-auto flex gap-2">
-                <input value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder="Message SSGPT..." className="flex-1 p-3 rounded-xl border dark:border-slate-700 bg-transparent" />
+                <input value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder="Ask SSGPT..." className="flex-1 p-3 rounded-xl border dark:border-slate-700 bg-transparent" />
                 <button onClick={() => setIsVoiceModalOpen(true)} className="p-3 bg-indigo-600 text-white rounded-xl"><VoiceIcon /></button>
                 <button onClick={() => handleSendMessage(userInput)} className="p-3 bg-indigo-600 text-white rounded-xl"><SendIcon /></button>
             </div>
         </div>
         {isVoiceModalOpen && <VoiceModeModal onClose={() => setIsVoiceModalOpen(false)} onStart={startLiveSession} />}
-        {isLiveSessionActive && (
-             <div className="fixed inset-0 bg-gray-900/95 backdrop-blur-2xl flex flex-col items-center justify-center z-50 p-4">
-                 <div className={`w-48 h-48 rounded-full border-4 ${isAiSpeaking ? 'border-indigo-500 animate-pulse' : 'border-slate-700'} flex items-center justify-center overflow-hidden`}>
-                    <img src={SSGPT_LOGO_URL} className="w-24 h-24" />
-                 </div>
-                 <div className="my-10 text-white text-center">
-                    <p className="text-xl font-bold">{currentUserText || "..."}</p>
-                    <p className="text-lg opacity-70 mt-2">{currentAiText}</p>
-                 </div>
-                 <button onClick={endLiveSession} className="bg-red-600 text-white px-8 py-3 rounded-full font-bold">End Session</button>
-             </div>
-        )}
     </div>
   );
 };

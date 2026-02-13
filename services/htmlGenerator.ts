@@ -1,9 +1,7 @@
-
 import { type QuestionPaperData, type Question, QuestionType } from '../types';
 
 const escapeHtml = (unsafe: string | undefined): string => {
     if (typeof unsafe !== 'string') return '';
-    // We escape essential HTML tags but preserve characters common in LaTeX like \ and $
     return unsafe
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -13,8 +11,7 @@ const escapeHtml = (unsafe: string | undefined): string => {
 }
 
 const formatSpecialText = (text: string = ''): string => {
-    // We do NOT escape math content here because KaTeX handles it.
-    // Converting newlines to <br/> is safe as KaTeX works on text nodes.
+    // Preserve backslashes for LaTeX and newlines for spacing
     return text.trim().replace(/\n/g, '<br/>');
 };
 
