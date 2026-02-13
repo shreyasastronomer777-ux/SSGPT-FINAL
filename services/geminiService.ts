@@ -20,7 +20,7 @@ const parseAiJson = (text: string) => {
         return JSON.parse(cleanedText);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
-        throw new Error("The AI returned an invalid response format. Using Gemini 2.5 might require a slightly different prompt structure if errors persist.");
+        throw new Error("The AI returned an invalid response format.");
     }
 };
 
@@ -47,26 +47,20 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Using Gemini 2.5 series as requested for fix
     const modelToUse = modelQuality === 'pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
 
     const finalPrompt = `
-You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
+You are a Senior Academic Examiner. Generate a high-quality exam paper strictly in **${language}**.
 
-**CORE LANGUAGE REQUIREMENT:**
-- Generate the ENTIRE assessment (questions, options, matches, solutions) strictly in: **${language}**.
-- Use formal academic tone and precise subject terminology appropriate for ${className}.
-
-**MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
-2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
-3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
-
-**QUESTION STRUCTURE RULES:**
-- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
-- **Multiple Choice:** Return exactly 4 options as a plain array of strings.
-- **Match the Following:** Return an object for 'options': {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. Column B MUST be shuffled.
-- **Answer Key:** The "answer" field must contain a detailed model solution or the correct choice.
+**FORMATTING RULES (CRITICAL):**
+1. **LATEX:** Use professional LaTeX for ALL math ($x$, $\\times$, $\\frac{a}{b}$). Use DOUBLE BACKSLASHES (\\\\) inside JSON strings.
+2. **MULTIPLE CHOICE:** MUST provide EXACTLY 4 options in the 'options' array.
+3. **MATCH THE FOLLOWING:** 
+   - 'options' must be an object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Shuffled Match for 2", "Shuffled Match for 1"...]}. 
+   - Column B MUST be randomly shuffled.
+   - The 'answer' field for Matching must be a correct key-value map: {"Item 1": "Correct Match", ...}.
+4. **NO PREFIXES:** Do not include "Q1.", "Ans:", or "a)" inside the text strings.
+5. **SPACING:** Keep descriptions concise.
 
 **PAPER PARAMETERS:**
 Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Total Marks: ${totalMarks} | Time: ${timeAllowed}
@@ -96,8 +90,8 @@ Return only a valid JSON array of question objects.
                         properties: {
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
-                            options: { description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching." },
-                            answer: { type: Type.STRING },
+                            options: { description: "Array for MCQ, or {columnA:[], columnB:[]} for Matching." },
+                            answer: { description: "String for text answers, or Object for Matching mappings." },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
                             taxonomy: { type: Type.STRING }
@@ -110,11 +104,7 @@ Return only a valid JSON array of question objects.
 
         const generatedQuestionsRaw = parseAiJson(response.text);
         
-        if (!Array.isArray(generatedQuestionsRaw) || generatedQuestionsRaw.length === 0) {
-            throw new Error("AI failed to produce content for the paper.");
-        }
-
-        const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
+        const processedQuestions: Question[] = generatedQuestionsRaw.map((q: any, index: number) => ({
             ...q,
             options: q.options || null,
             answer: q.answer || '',
