@@ -12,13 +12,10 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const prompt = `
-You are a configuration extraction engine for SSGPT, an AI exam paper generator.
-Your job is to extract structured academic configuration from a user's spoken instruction.
+You are a configuration extraction engine for SSGPT.
+Extract structured academic configuration from this transcript: "${transcript}"
 
-**Transcript:** "${transcript}"
-
-Return ONLY a JSON object.
-Format:
+Return ONLY a JSON object:
 {
   "schoolName": "",
   "className": "",
@@ -38,7 +35,6 @@ Format:
 `;
 
     try {
-        // Fix: Updated model to gemini-3-flash-preview and simplified contents to direct string
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
@@ -51,13 +47,10 @@ Format:
 };
 
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
-  if (!process.env.API_KEY) {
-    throw new Error("Internal Error Occurred");
-  }
+  if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceMode, sourceFiles, modelQuality } = formData;
 
-  // Fix: Updated models to use Gemini 3 series aliases
   const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
   const questionRequests = questionDistribution
@@ -68,19 +61,18 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     ? `
 - **Source Materials to Use:**
 ${sourceMaterials}
-${sourceMode === 'strict' ? "Generate questions ONLY from provided materials." : "Prioritize materials, supplement if needed."}`
+${sourceMode === 'strict' ? "STRICT MODE: Generate questions ONLY from provided materials." : "REFERENCE MODE: Use materials as primary guide."}`
     : '';
 
   const finalPrompt = `
-You are a professional Question Paper Designer. Generate a high-quality exam paper in JSON format.
+You are a professional typesetter and Question Paper Designer. Generate a high-quality exam paper in JSON format.
 
-**STRICT MATHEMATICAL FORMATTING (MANDATORY):**
-1. **LATEX FOR ALL MATH:** You MUST use proper LaTeX syntax for ALL mathematical expressions, formulas, fractions, negative numbers, and variables.
-2. **DELIMITERS:** Use single dollar signs ($...$) for all inline math.
+**STRICT MATHEMATICAL FORMATTING RULES (MANDATORY):**
+1. **LATEX FOR ALL MATH:** Use proper LaTeX syntax for ALL mathematical expressions, formulas, fractions, negative numbers, and variables.
+2. **DELIMITERS:** Use single dollar signs ($...$) for ALL inline math.
 3. **FRACTIONS:** NEVER use plain text fractions like "3/4". ALWAYS use $\\frac{3}{4}$.
 4. **SYMBOLS:** Use proper LaTeX: $\\times$ for multiply, $\\div$ for divide, $\\pm$ for plus-minus, $\\sqrt{x}$ for square roots, $\\pi$, $\\theta$, etc.
-5. **MCQ OPTIONS:** If options contain numbers or math, you MUST wrap them in LaTeX $...$. E.g., options: ["$\\frac{1}{2}$", "$1.5$", "$-5$", "$\\pi$"].
-6. **DECIMALS & NEGATIVES:** Use LaTeX for decimals if part of equations (e.g., $0.5x$) and negative numbers (e.g., $-9$).
+5. **MCQ OPTIONS:** If options contain numbers or math, wrap them in LaTeX $...$. E.g., options: ["$\\frac{1}{2}$", "$1.5$"].
 
 **Paper Specifications:**
 - Subject: ${subject}
@@ -92,7 +84,7 @@ ${sourceMaterialInstruction}
 **Required Question Mix:**
 ${questionRequests}
 
-Return ONLY a JSON array of objects conforming to the provided schema. Ensure 'options' for Multiple Choice is an array of 4 strings.
+Return ONLY a JSON array of objects with fields: type, questionText, options, answer, marks, difficulty, taxonomy.
 `;
 
     const questionSchema = {
@@ -100,8 +92,8 @@ Return ONLY a JSON array of objects conforming to the provided schema. Ensure 'o
         properties: {
             type: { type: Type.STRING, enum: Object.values(QuestionType) },
             questionText: { type: Type.STRING },
-            options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Array of 4 options for MCQs, or null for others." },
-            answer: { type: Type.STRING, description: "The correct answer as a string." },
+            options: { type: Type.ARRAY, items: { type: Type.STRING } },
+            answer: { type: Type.STRING },
             marks: { type: Type.NUMBER },
             difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
             taxonomy: { type: Type.STRING, enum: Object.values(Taxonomy) },
@@ -117,7 +109,6 @@ Return ONLY a JSON array of objects conforming to the provided schema. Ensure 'o
             }
         }
 
-        // Fix: Corrected contents structure to use { parts }
         const response = await ai.models.generateContent({
             model: modelToUse,
             contents: { parts },
@@ -128,16 +119,13 @@ Return ONLY a JSON array of objects conforming to the provided schema. Ensure 'o
         });
 
         const generatedQuestionsRaw = JSON.parse(response.text) as any[];
-        if (!Array.isArray(generatedQuestionsRaw)) throw new Error("Internal Error Occurred");
         
-        const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => {
-            return { 
-                ...q, 
-                options: q.options || null, 
-                answer: q.answer || '', 
-                questionNumber: index + 1 
-            };
-        });
+        const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
+            ...q,
+            options: q.options || null,
+            answer: q.answer || '',
+            questionNumber: index + 1
+        }));
 
         const paperId = `paper-${Date.now()}`;
         const structuredPaperData: QuestionPaperData = {
@@ -166,7 +154,6 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
   const analysisPrompt = `Analyze and structure the following exam text into JSON. CRITICAL: Rewrite all plain math/fractions to professional LaTeX $...$. Text: ${text}`;
 
   try {
-    // Fix: Updated model and simplified contents
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: analysisPrompt,
@@ -183,7 +170,6 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
   if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   try {
-    // Fix: Updated model and corrected contents structure
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: { parts: [...imageParts, { text: "OCR this and structure into JSON. Convert math to LaTeX $...$." }] },
@@ -197,26 +183,20 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
 };
 
 export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch?: boolean, useThinking?: boolean): Promise<AsyncGenerator<GenerateContentResponse>> => {
-    try {
-        const config: any = {};
-        if (useSearch) config.tools = [{ googleSearch: {} }];
-        if (useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
+    const config: any = {};
+    if (useSearch) config.tools = [{ googleSearch: {} }];
+    if (useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
 
-        return chat.sendMessageStream({
-            message: messageParts,
-            config: Object.keys(config).length > 0 ? config : undefined,
-        });
-    } catch (error) {
-        handleApiError(error, "generateChatResponseStream");
-        throw error;
-    }
+    return chat.sendMessageStream({
+        message: messageParts,
+        config: Object.keys(config).length > 0 ? config : undefined,
+    });
 };
 
 export const generateTextToSpeech = async (text: string): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        // Fix: Simplified contents to direct string
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
             contents: text,
@@ -237,11 +217,10 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
 export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Fix: Updated model to gemini-3-pro-preview for editing tasks
     const chat = ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: "You are an expert editor. For any math, ALWAYS use professional LaTeX $...$. Ensure fractions use \\frac{a}{b}.",
+            systemInstruction: "You are an expert academic editor. For any math, ALWAYS use LaTeX $...$. Guided editing only.",
             tools: [{ functionDeclarations: [] }]
         }
     });
@@ -249,20 +228,14 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
 };
 
 export const getAiEditResponse = async (chat: Chat, instruction: string) => {
-    try {
-        const response = await chat.sendMessage({ message: instruction });
-        return { functionCalls: response.functionCalls || null, text: response.text || null };
-    } catch (error) {
-        handleApiError(error, "getAiEditResponse");
-        throw error;
-    }
+    const response = await chat.sendMessage({ message: instruction });
+    return { functionCalls: response.functionCalls || null, text: response.text || null };
 };
 
 export const translatePaperService = async (paperData: QuestionPaperData, targetLanguage: string): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        // Fix: Updated model to gemini-3-pro-preview
         const response = await ai.models.generateContent({ 
             model: "gemini-3-pro-preview", 
             contents: `Translate this exam paper into ${targetLanguage}. Maintain all LaTeX strings $...$ exactly. Return JSON.`, 
@@ -281,7 +254,6 @@ export const translateQuestionService = async (question: Question, targetLanguag
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        // Fix: Updated model to gemini-3-flash-preview
         const response = await ai.models.generateContent({ 
             model: "gemini-3-flash-preview", 
             contents: `Translate this question to ${targetLanguage}. Preserve all LaTeX math. Return JSON.`, 
