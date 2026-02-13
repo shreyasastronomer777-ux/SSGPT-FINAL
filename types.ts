@@ -1,3 +1,4 @@
+
 // Fix: Defined and exported all necessary types to resolve import errors across the application.
 export enum QuestionType {
   MultipleChoice = 'Multiple Choice',
@@ -48,7 +49,6 @@ export interface FormData {
   sourceMode: 'strict' | 'reference';
   questionDistribution: QuestionDistributionItem[];
   totalMarks: number;
-  modelQuality?: 'flash' | 'pro';
 }
 
 export interface AnalysisResult {

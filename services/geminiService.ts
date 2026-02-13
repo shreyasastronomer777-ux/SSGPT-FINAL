@@ -1,28 +1,42 @@
-
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentResponse } from "@google/genai";
 import { type FormData, type QuestionPaperData, QuestionType, Question, Difficulty, Taxonomy, AnalysisResult } from '../types';
-// Fix: Exporting generateHtmlFromPaperData so it can be imported from this service as expected by components/Editor.tsx
 import { generateHtmlFromPaperData } from "./htmlGenerator";
 export { generateHtmlFromPaperData };
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    throw new Error("Internal Error Occurred");
+    if (error?.message?.includes("Safety")) {
+        throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
+    }
+    throw new Error(`AI Generation Failed (${context}). Please try again with more specific instructions.`);
+};
+
+/**
+ * Robustly cleans and parses JSON from AI responses, handling markdown artifacts.
+ */
+const parseAiJson = (text: string) => {
+    try {
+        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanedText);
+    } catch (e) {
+        console.error("JSON Parse Error. Raw text:", text);
+        throw new Error("The AI returned an invalid response format. Attempting to regenerate is recommended.");
+    }
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const prompt = `Extract exam configuration from: "${transcript}". Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy}]}. Use LaTeX for any math.`;
-
+    const prompt = `Extract academic configuration from: "${transcript}". 
+    Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
+    Use LaTeX with double backslashes for any math.`;
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
-        return JSON.parse(response.text);
+        return parseAiJson(response.text);
     } catch (error) {
         handleApiError(error, "extractConfigFromTranscript");
     }
@@ -31,25 +45,45 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
 export const generateQuestionPaper = async (formData: FormData): Promise<QuestionPaperData> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, modelQuality } = formData;
-
-    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
-
+    const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles } = formData;
+    
     const finalPrompt = `
-You are an expert Question Paper Designer. Generate a high-quality exam paper in JSON.
-STRICT MATH: Use LaTeX $...$ for ALL math, fractions, and variables.
+You are a Senior Academic Examiner. Your task is to generate a high-quality, professional examination paper in JSON format.
 
-Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
-Question mix: ${JSON.stringify(questionDistribution)}
-${sourceMaterials ? `Source Material: ${sourceMaterials}` : ''}
+**CORE LANGUAGE REQUIREMENT:**
+- Generate the ENTIRE assessment (questions, options, matches, solutions) strictly in: **${language}**.
+- Use formal academic tone and precise subject terminology appropriate for ${className}.
 
-Return JSON array of objects: {type, questionText, options: string[], answer: string, marks, difficulty, taxonomy}.
+**MATHEMATICAL & SCIENTIFIC FORMATTING (CRITICAL):**
+1. **LATEX FOR ALL MATH:** Use professional LaTeX for ALL formulas, equations, variables ($x$), symbols (multiplication $\\times$, division $\\div$, plus/minus $\\pm$, etc.), and units ($kg \\cdot m/s^2$).
+2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g., \\\\times, \\\\frac{a}{b}) for all LaTeX commands within JSON strings.
+3. **PACKAGING:** Enclose all LaTeX content in single dollar signs: $...$.
+
+**QUESTION STRUCTURE RULES:**
+- **NO NUMBERING:** DO NOT include any numbering prefixes like "1.", "Q1", "a)", "(i)", "Column A:" inside the strings.
+- **Multiple Choice:** Return exactly 4 options as a plain array of strings.
+- **Match the Following:** Return an object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Match for 2", "Match for 1"...]}. Column B MUST be shuffled.
+- **Answer Key:** The "answer" field must contain a detailed model solution or the correct choice.
+
+**PAPER PARAMETERS:**
+Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Total Marks: ${totalMarks} | Time: ${timeAllowed}
+Mix: ${JSON.stringify(questionDistribution)}
+${sourceMaterials ? `Context: ${sourceMaterials}` : ''}
+
+Return only a valid JSON array of question objects.
 `;
 
     try {
+        const parts: Part[] = [{ text: finalPrompt }];
+        if (sourceFiles) {
+            for (const file of sourceFiles) {
+                parts.push({ inlineData: { data: file.data, mimeType: file.mimeType } });
+            }
+        }
+
         const response = await ai.models.generateContent({
-            model: modelToUse,
-            contents: finalPrompt,
+            model: "gemini-3-pro-preview",
+            contents: { parts },
             config: { 
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -59,19 +93,25 @@ Return JSON array of objects: {type, questionText, options: string[], answer: st
                         properties: {
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            // Fix: Type.NULL is incorrect for data that will be returned; removed to allow dynamic return types (array or object).
+                            options: { description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching." },
                             answer: { type: Type.STRING },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
-                            taxonomy: { type: Type.STRING },
+                            taxonomy: { type: Type.STRING }
                         },
-                        required: ['type', 'questionText', 'answer', 'marks', 'difficulty', 'taxonomy']
+                        required: ["type", "questionText", "marks", "answer"]
                     }
                 }
             }
         });
 
-        const generatedQuestionsRaw = JSON.parse(response.text) as any[];
+        const generatedQuestionsRaw = parseAiJson(response.text);
+        
+        if (!Array.isArray(generatedQuestionsRaw) || generatedQuestionsRaw.length === 0) {
+            throw new Error("AI failed to produce content for the paper.");
+        }
+
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
             ...q,
             options: q.options || null,
@@ -85,37 +125,25 @@ Return JSON array of objects: {type, questionText, options: string[], answer: st
             timeAllowed, questions: processedQuestions, htmlContent: '', createdAt: new Date().toISOString(),
         };
         
-        return { ...structuredPaperData, htmlContent: generateHtmlFromPaperData(structuredPaperData) };
+        structuredPaperData.htmlContent = generateHtmlFromPaperData(structuredPaperData);
+        return structuredPaperData;
     } catch (error) {
         handleApiError(error, "generateQuestionPaper");
         throw error;
     }
 };
 
-// Fix: Added generateImage implementation using gemini-2.5-flash-image to fix import error in components/ImageGenerationModal.tsx
 export const generateImage = async (prompt: string, aspectRatio: string = '1:1'): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: prompt,
-            config: {
-                imageConfig: {
-                    aspectRatio: aspectRatio as any
-                }
-            }
+            config: { imageConfig: { aspectRatio: aspectRatio as any } }
         });
-
-        const candidates = response.candidates;
-        if (!candidates || candidates.length === 0) throw new Error("No candidates returned");
-        
-        // Find the image part in the response
-        for (const part of candidates[0].content.parts) {
-            if (part.inlineData) {
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
         }
         throw new Error("Internal Error Occurred");
     } catch (error) {
@@ -127,58 +155,13 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
 export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const tools: FunctionDeclaration[] = [
-        {
-            name: 'addQuestion',
-            description: 'Insert a new question.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    type: { type: Type.STRING, enum: Object.values(QuestionType) },
-                    questionText: { type: Type.STRING },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    answer: { type: Type.STRING },
-                    marks: { type: Type.NUMBER },
-                },
-                required: ['type', 'questionText', 'answer', 'marks']
-            }
-        },
-        {
-            name: 'updateQuestion',
-            description: 'Modify an existing question content.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    questionNumber: { type: Type.NUMBER },
-                    updates: {
-                        type: Type.OBJECT,
-                        properties: {
-                            questionText: { type: Type.STRING },
-                            answer: { type: Type.STRING },
-                            marks: { type: Type.NUMBER },
-                        }
-                    }
-                },
-                required: ['questionNumber', 'updates']
-            }
-        },
-        {
-            name: 'deleteQuestion',
-            description: 'Remove a question.',
-            parameters: {
-                type: Type.OBJECT,
-                properties: { questionNumber: { type: Type.NUMBER } },
-                required: ['questionNumber']
-            }
-        }
-    ];
-
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: "You are an expert exam editor. Use the tools to modify the paper. ALWAYS use LaTeX $...$ for math. Guide the user through changes.",
-            tools: [{ functionDeclarations: tools }]
+            systemInstruction: `You are an expert academic editor.
+            STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
+            NO REDUNDANT NUMBERING: The system handles all layout numbering. 
+            Preserve the paper's original language strictly.`
         }
     });
 };
@@ -198,9 +181,10 @@ export const generateChatResponseStream = async (chat: Chat, messageParts: Part[
 export const generateTextToSpeech = async (text: string): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Fix: Updated contents format to follow the recommended [{ parts: [{ text }] }] structure for TTS.
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: text,
+        contents: [{ parts: [{ text }] }],
         config: {
             responseModalities: [Modality.AUDIO],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
@@ -214,10 +198,10 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: ` OCR/Analyze this text into JSON. Math must be LaTeX. Text: ${text}`,
+        contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(response.text) as AnalysisResult;
+    return parseAiJson(response.text) as AnalysisResult;
 };
 
 export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<AnalysisResult> => {
@@ -225,8 +209,8 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: { parts: [...imageParts, { text: "OCR this handwritten exam to JSON. Use LaTeX math." }] },
+        contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes for all math formulas." }] },
         config: { responseMimeType: "application/json" }
     });
-    return JSON.parse(response.text) as AnalysisResult;
+    return parseAiJson(response.text) as AnalysisResult;
 };

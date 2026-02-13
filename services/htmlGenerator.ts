@@ -10,9 +10,18 @@ const escapeHtml = (unsafe: string | undefined): string => {
         .replace(/'/g, "&#039;");
 }
 
-const formatSpecialText = (text: string = ''): string => {
-    // Preserve backslashes for LaTeX and newlines for spacing
-    return text.trim().replace(/\n/g, '<br/>');
+const stripNumbering = (text: string): string => {
+    // Robustly remove AI numbering prefixes across languages and character sets.
+    return text.trim()
+        .replace(/^(\s*(\(?[a-zA-Z0-9]{1,3}[\.\)]\s*))+/, '')
+        .replace(/^[Qq]\d+[\.:\)]\s*/, '')
+        .replace(/^Column\s+[AB][\.:\s]*/i, '')
+        .replace(/\\n/g, ' ')
+        .trim();
+};
+
+const formatText = (text: string = ''): string => {
+    return stripNumbering(text).replace(/\n/g, '<br/>');
 };
 
 const toRoman = (num: number): string => {
@@ -31,204 +40,139 @@ const renderOptions = (question: Question): string => {
     if (question.type === QuestionType.MultipleChoice && Array.isArray(question.options)) {
         const options = question.options as string[];
         if (options.length >= 4) {
-            return `<table style="width: 100%; border-collapse: collapse;"><tbody>
+            return `<table style="width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed;"><tbody>
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding: 2px 10px 2px 0; word-wrap: break-word; white-space: normal;">(a) ${formatSpecialText(options[0])}</td>
-                        <td style="width: 50%; vertical-align: top; padding: 2px 0 2px 10px; word-wrap: break-word; white-space: normal;">(b) ${formatSpecialText(options[1])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 8px 10px 8px 0; font-size: 1.15em;">(a) ${formatText(options[0])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 8px 0 8px 10px; font-size: 1.15em;">(b) ${formatText(options[1])}</td>
                     </tr>
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding: 2px 10px 2px 0; word-wrap: break-word; white-space: normal;">(c) ${formatSpecialText(options[2])}</td>
-                        <td style="width: 50%; vertical-align: top; padding: 2px 0 2px 10px; word-wrap: break-word; white-space: normal;">(d) ${formatSpecialText(options[3])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 8px 10px 8px 0; font-size: 1.15em;">(c) ${formatText(options[2])}</td>
+                        <td style="width: 50%; vertical-align: top; padding: 8px 0 8px 10px; font-size: 1.15em;">(d) ${formatText(options[3])}</td>
                     </tr>
                 </tbody></table>`;
+        } else if (options.length > 0) {
+            return `<div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 1.15em;">
+                ${options.map((opt, i) => `<div style="break-inside: avoid;">(${String.fromCharCode(97 + i)}) ${formatText(opt)}</div>`).join('')}
+            </div>`;
         }
-        return `<div>${options.map((opt, i) => `<div style="padding: 2px 0;">(${String.fromCharCode(97 + i)}) ${formatSpecialText(opt)}</div>`).join('')}</div>`
-    } else if (question.type === QuestionType.MatchTheFollowing && typeof question.options === 'object' && question.options && 'columnA' in question.options && 'columnB' in question.options) {
-        const { columnA, columnB } = question.options as { columnA: string[], columnB: string[] };
-         if (!Array.isArray(columnA) || !Array.isArray(columnB) || columnA.length !== columnB.length) {
-            return '<!-- Invalid Match The Following options data -->';
-        }
-        const header = `<thead>
-            <tr style="background-color: #f8f8f8; font-weight: bold;">
-                <th style="padding: 12px; text-align: left; width: 50%; border-right: 1px solid #cccccc; border-bottom: 1px solid #cccccc;">Column A</th>
-                <th style="padding: 12px; text-align: left; width: 50%; border-bottom: 1px solid #cccccc;">Column B</th>
-            </tr>
-        </thead>`;
+    } else if (question.type === QuestionType.MatchTheFollowing) {
+        let colA: string[] = [];
+        let colB: string[] = [];
 
-        const rows = columnA.map((item, index) => `
-            <tr style="break-inside: avoid; page-break-inside: avoid;">
-                <td style="padding: 12px; vertical-align: top; width: 50%; border-right: 1px solid #cccccc; border-top: 1px solid #cccccc;">(${toRoman(index + 1)}) ${formatSpecialText(item)}</td>
-                <td style="padding: 12px; vertical-align: top; width: 50%; border-top: 1px solid #cccccc;">(${String.fromCharCode(97 + index)}) ${formatSpecialText(columnB[index])}</td>
+        const opts = question.options as any;
+        if (opts && typeof opts === 'object') {
+            if ('columnA' in opts && 'columnB' in opts) {
+                colA = opts.columnA || [];
+                colB = opts.columnB || [];
+            } else {
+                colA = Object.keys(opts);
+                colB = Object.values(opts) as string[];
+            }
+        }
+
+        if (colA.length === 0) return '';
+
+        const rows = colA.map((item, index) => `
+            <tr>
+                <td style="padding: 12px; border: 1.5px solid #000; width: 50%; vertical-align: middle;">(${toRoman(index + 1).toLowerCase()}) ${formatText(item)}</td>
+                <td style="padding: 12px; border: 1.5px solid #000; width: 50%; vertical-align: middle;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
-        return `<table style="width: 100%; border-collapse: collapse; border: 1px solid #cccccc; margin-top: 1.25rem; break-inside: avoid; page-break-inside: avoid;">
-            ${header}
-            <tbody>${rows}</tbody>
-        </table>`;
+        return `
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; border: 2.5px solid #000; font-size: 1.1em; background-color: #fff;">
+                <thead>
+                    <tr style="text-align: left; background-color: #f8fafc; border-bottom: 2.5px solid #000;">
+                        <th style="padding: 12px; border: 1.5px solid #000; width: 50%; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Column A</th>
+                        <th style="padding: 12px; border: 1.5px solid #000; width: 50%; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Column B</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
     }
     return '';
 };
 
-const renderQuestion = (question: Question): string => {
+const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
     const optionsHtml = renderOptions(question);
-    const questionText = formatSpecialText(question.questionText);
-    const questionColorStyle = question.styles?.color ? `color: ${escapeHtml(question.styles.color)};` : '';
-    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 1rem;">
+    const answerHtml = isAnswerKey ? `
+        <div style="margin-top: 10px; padding: 12px; background-color: #f8fafc; border-left: 5px solid #4f46e5; font-size: 1.1em; border-radius: 4px;">
+            <strong style="color: #4f46e5; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.5px;">Correct Answer:</strong>
+            <div style="margin-top: 4px; color: #1e293b;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
+        </div>
+    ` : '';
+
+    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 3.2rem; width: 100%;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
-                        <td style="vertical-align: top; width: 30px; padding-right: 5px;"><b>${question.questionNumber}.</b></td>
-                        <td style="vertical-align: top; text-align: left; ${questionColorStyle} word-wrap: break-word; white-space: normal;">${questionText}</td>
-                        <td style="vertical-align: top; text-align: right; width: 40px; padding-left: 10px;"><b>[${question.marks}]</b></td>
+                        <td style="vertical-align: top; width: 45px; font-weight: bold; font-size: 1.25em; color: #000;">${question.questionNumber}.</td>
+                        <td style="vertical-align: top; text-align: left; line-height: 1.6; font-size: 1.25em; color: #000;">${formatText(question.questionText)}</td>
+                        <td style="vertical-align: top; text-align: right; width: 80px; font-weight: bold; font-size: 1.2em; color: #000;">[${question.marks}]</td>
                     </tr>
                 </tbody>
             </table>
-            ${optionsHtml ? `<div class="question-options" style="padding-left: 30px; margin-top: 0.5rem;">${optionsHtml}</div>` : ''}
+            ${optionsHtml ? `<div style="padding-left: 45px;">${optionsHtml}</div>` : ''}
+            ${answerHtml ? `<div style="padding-left: 45px;">${answerHtml}</div>` : ''}
         </div>`;
 };
 
-const renderAnswerContent = (question: Question): string => {
-    if (question.type === QuestionType.MatchTheFollowing && typeof question.answer === 'object' && question.answer !== null) {
-        return `<ul style="margin: 0; padding-left: 20px;">
-            ${Object.entries(question.answer).map(([key, value]) => `<li><b>${formatSpecialText(key)}</b> &rarr; ${formatSpecialText(String(value))}</li>`).join('')}
-        </ul>`;
-    }
-    
-    let answerText = 'Not provided';
-    if (question.answer !== null && question.answer !== undefined) {
-        if (typeof question.answer === 'string' && question.answer.trim() !== '') {
-             answerText = question.answer;
-        } else {
-             answerText = String(question.answer);
-        }
-    }
-    
-    return `<div style="font-weight: bold; color: #15803d;">${formatSpecialText(answerText)}</div>`;
-};
-
-export const generateAnswerKeyHtml = (paperData: QuestionPaperData, showQuestions: boolean, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' } }): string => {
-    const headerHtml = generateHeaderHtml(paperData, "ANSWER KEY", options);
-    
-    const questionsHtml = paperData.questions.map(q => {
-        const questionBlock = showQuestions ? `
-            <div style="margin-bottom: 4px; color: #334155; font-size: 0.95em;">
-                <b>Q${q.questionNumber}.</b> ${formatSpecialText(q.questionText)}
-            </div>
-        ` : `
-            <div style="margin-bottom: 4px; color: #334155; font-size: 0.95em;">
-               <b>Q${q.questionNumber}</b>
-            </div>
-        `;
-
-        const answerBlock = `
-            <div style="margin-left: ${showQuestions ? '20px' : '0px'};">
-                ${renderAnswerContent(q)}
-            </div>
-        `;
-
-        return `
-            <div style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 12px;">
-                ${questionBlock}
-                ${answerBlock}
-            </div>
-        `;
-    }).join('');
-
-    return `<div>${headerHtml}<div style="margin-top: 20px;">${questionsHtml}</div></div>`;
-};
-
-const generateHeaderHtml = (paperData: QuestionPaperData, titleOverride?: string, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' } }) => {
-     const logoSrc = options?.logoConfig?.src;
-    const logoAlignment = options?.logoConfig?.alignment ?? 'center';
-    let headerContentHtml = '';
-    const logoImgTag = `<img src="${logoSrc}" alt="School Logo" style="max-height: 80px; margin-bottom: 10px; display: inline-block;" />`;
-    const title = titleOverride || paperData.subject;
-    
-    const schoolDetails = `
-        <h3 style="font-size: 18px; font-weight: bold; margin: 0;">${escapeHtml(paperData.schoolName)}</h3>
-        <h4 style="font-size: 16px; font-weight: bold; margin: 5px 0; text-decoration: underline;">${escapeHtml(title)}</h4>
-        <p style="margin: 4px 0;">Class: ${escapeHtml(paperData.className)}</p>
-    `;
-
-    if (logoSrc && (logoAlignment === 'left' || logoAlignment === 'right')) {
-        if (logoAlignment === 'left') {
-            headerContentHtml = `<div style="display: flex; justify-content: space-between; align-items: center; text-align: center;">
-                <div style="flex: 1; text-align: left;">${logoImgTag}</div>
-                <div style="flex: 2;">${schoolDetails}</div>
-                <div style="flex: 1;"></div>
-            </div>`;
-        } else {
-             headerContentHtml = `<div style="display: flex; justify-content: space-between; align-items: center; text-align: center;">
-                <div style="flex: 1;"></div>
-                <div style="flex: 2;">${schoolDetails}</div>
-                <div style="flex: 1; text-align: right;">${logoImgTag}</div>
-            </div>`;
-        }
-    } else {
-        headerContentHtml = `<div style="text-align: center;">
-                ${logoSrc && logoAlignment === 'center' ? logoImgTag : ''}
-                ${schoolDetails}
-            </div>`;
-    }
-    
-    return `
-        <div style="break-inside: avoid; page-break-inside: avoid;">
-            ${headerContentHtml}
-            <hr style="border:0; border-top:1px solid #000; margin-top: 8px;">
-             <table style="width:100%; margin: 8px 0;"><tbody><tr>
-                <td style="text-align:left;"><b>Time Allowed: ${escapeHtml(paperData.timeAllowed)}</b></td>
-                <td style="text-align:right;"><b>Total Marks: ${escapeHtml(paperData.totalMarks)}</b></td>
-            </tr></tbody></table>
-            <hr style="border:0; border-top:0.5px solid #000;">
-        </div>
-    `;
-}
-
-export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' } }): string => {
-    const sectionOrder = [ QuestionType.MultipleChoice, QuestionType.FillInTheBlanks, QuestionType.TrueFalse, QuestionType.MatchTheFollowing, QuestionType.ShortAnswer, QuestionType.LongAnswer, ];
+export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' }, isAnswerKey?: boolean }): string => {
+    const sectionOrder = [
+        QuestionType.MultipleChoice, 
+        QuestionType.FillInTheBlanks, 
+        QuestionType.TrueFalse, 
+        QuestionType.MatchTheFollowing, 
+        QuestionType.ShortAnswer, 
+        QuestionType.LongAnswer
+    ];
     let questionCounter = 0;
-    let sectionLetterCounter = 0;
-    const sectionsHtml = sectionOrder.map(sectionType => {
-        const questionsInSection = paperData.questions.filter(q => q.type === sectionType);
-        if (questionsInSection.length === 0) return '';
+    let sectionCount = 0;
+    const isAnswerKey = options?.isAnswerKey ?? false;
+
+    let contentHtml = '';
+
+    // Render Header
+    const logoSrc = options?.logoConfig?.src;
+    const logoAlignment = options?.logoConfig?.alignment ?? 'center';
+    const logoImgTag = logoSrc ? `<img src="${logoSrc}" alt="Logo" style="max-height: 100px; margin-bottom: 25px; display: inline-block; object-fit: contain;" />` : '';
+    
+    contentHtml += `
+        <div style="text-align: center; width: 100%; margin-bottom: 40px; break-inside: avoid;">
+            ${logoAlignment === 'center' ? logoImgTag : ''}
+            <h1 style="margin: 0; font-size: 36px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; color: #000;">${escapeHtml(paperData.schoolName)}</h1>
+            <h2 style="margin: 12px 0; font-size: 28px; text-decoration: underline; font-weight: bold; color: #1e293b;">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - OFFICIAL MARKING SCHEME' : ''}</h2>
+            <p style="margin: 6px 0; font-weight: 600; font-size: 1.5em; color: #475569;">Class: ${escapeHtml(paperData.className)}</p>
+            <hr style="border: 0; border-top: 5px solid #000; margin-top: 25px;">
+            <table style="width: 100%; margin: 15px 0; font-weight: bold; font-size: 1.4em;">
+                <tr>
+                    <td style="text-align: left; color: #000;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
+                    <td style="text-align: right; color: #000;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
+                </tr>
+            </table>
+            <hr style="border: 0; border-top: 4px solid #000; margin-bottom: 50px;">
+        </div>
+    `;
+
+    sectionOrder.forEach(type => {
+        const qs = paperData.questions.filter(q => q.type === type);
+        if (qs.length === 0) return;
+        sectionCount++;
+        const sectionTotal = qs.reduce((acc, q) => acc + q.marks, 0);
         
-        sectionLetterCounter++;
-        const sectionLetter = String.fromCharCode(64 + sectionLetterCounter);
-
-        const marksSummary = new Map<number, number>();
-        let sectionTotalMarks = 0;
-        questionsInSection.forEach(q => {
-            marksSummary.set(q.marks, (marksSummary.get(q.marks) || 0) + 1);
-            sectionTotalMarks += q.marks;
-        });
-        const marksSummaryString = Array.from(marksSummary.entries())
-            .map(([marks, count]) => `${count} &times; ${marks}`)
-            .join(', ');
-
-        const sectionHeaderHtml = `
-            <div style="text-align: center; font-weight: bold; margin: 24px 0 8px; break-after: avoid; page-break-after: avoid;">
-                <p style="text-decoration: underline; margin: 0;">Section ${sectionLetter}</p>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 16px; break-after: avoid; page-break-after: avoid;">
-                <span>${toRoman(sectionLetterCounter)}. ${sectionType}</span>
-                <span>[${marksSummaryString} = ${sectionTotalMarks} Marks]</span>
+        contentHtml += `
+            <div style="text-align: center; margin: 70px 0 35px; font-weight: 900; text-transform: uppercase; text-decoration: underline; font-size: 1.7em; break-inside: avoid; color: #000;">Section ${String.fromCharCode(64 + sectionCount)}</div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 4.5px solid #000; padding-bottom: 12px; margin-bottom: 45px; font-weight: bold; break-inside: avoid;">
+                <span style="font-size: 1.5em;">${toRoman(sectionCount)}. ${type} Questions</span>
+                <span style="font-size: 1.4em;">[${qs.length} &times; ${qs[0].marks} = ${sectionTotal} Marks]</span>
             </div>
         `;
 
-        const sectionQuestionsHtml = questionsInSection.map(q => {
+        qs.forEach(q => {
             questionCounter++;
-            return renderQuestion({ ...q, questionNumber: questionCounter });
-        }).join('');
-        return sectionHeaderHtml + sectionQuestionsHtml;
-    }).join('');
-    
-    const headerHtml = generateHeaderHtml(paperData, undefined, options);
+            contentHtml += renderQuestion({ ...q, questionNumber: questionCounter }, isAnswerKey);
+        });
+    });
 
-    return `
-        <div>
-            ${headerHtml}
-            ${sectionsHtml}
-        </div>
-    `;
+    return `<div id="paper-root" style="font-family: 'Inter', 'Times New Roman', serif; color: #000; background: #fff; width: 100%; padding-bottom: 50px;">${contentHtml}</div>`;
 };
