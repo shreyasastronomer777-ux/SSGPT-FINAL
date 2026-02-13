@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { MicIcon } from './icons/MicIcon';
@@ -25,6 +24,7 @@ export const VoiceConfigurator: React.FC<VoiceConfiguratorProps> = ({ onConfigEx
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
 
+            if (!process.env.API_KEY) throw new Error("API KEY Missing");
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             
@@ -44,7 +44,7 @@ export const VoiceConfigurator: React.FC<VoiceConfiguratorProps> = ({ onConfigEx
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         if (message.serverContent?.inputTranscription) {
-                            setTranscript(prev => prev + ' ' + message.serverContent?.inputTranscription?.text);
+                            setTranscript(prev => prev + ' ' + (message.serverContent?.inputTranscription?.text || ''));
                         }
                     },
                     onerror: (e) => console.error("Voice Error", e),
@@ -56,7 +56,7 @@ export const VoiceConfigurator: React.FC<VoiceConfiguratorProps> = ({ onConfigEx
                 config: {
                     responseModalities: [Modality.AUDIO],
                     inputAudioTranscription: {},
-                    systemInstruction: "Transcribe accurately. Do not talk back."
+                    systemInstruction: "Transcribe the user's exam requirements accurately. Do not talk back, just transcribe."
                 }
             });
         } catch (err) {
@@ -89,10 +89,12 @@ export const VoiceConfigurator: React.FC<VoiceConfiguratorProps> = ({ onConfigEx
         const int16 = new Int16Array(l);
         for (let i = 0; i < l; i++) int16[i] = data[i] * 32768;
         return {
-            data: btoa(String.fromCharCode(...new Uint8Array(int16.buffer))),
+            data: encode(new Uint8Array(int16.buffer)),
             mimeType: 'audio/pcm;rate=16000',
         };
     };
+
+    function encode(bytes: Uint8Array) { let binary = ''; const len = bytes.byteLength; for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); } return btoa(binary); }
 
     return (
         <div className="relative">

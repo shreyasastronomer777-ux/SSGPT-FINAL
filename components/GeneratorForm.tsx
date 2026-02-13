@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { type FormData, QuestionType, type QuestionDistributionItem, Difficulty, Taxonomy, User } from '../types';
 import { LANGUAGES, QUESTION_TYPES, DIFFICULTY_LEVELS, BLOOM_TAXONOMY_LEVELS } from '../constants';
@@ -53,6 +52,7 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
     timeAllowed: '',
     sourceMaterials: '',
     sourceMode: 'reference' as 'strict' | 'reference',
+    modelQuality: 'flash' as 'flash' | 'pro',
   });
   
   useEffect(() => {
@@ -121,7 +121,6 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    // Fix: Explicitly cast Array.from(files) to File[] to ensure the compiler knows the type of 'file'
     for (const file of Array.from(files) as File[]) {
         if (file.size > 20 * 1024 * 1024) { 
             alert(`File ${file.name} is too large. Please keep files under 20MB.`);
@@ -201,13 +200,14 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
 
   const handleTrySample = () => {
     setFormData({
+      ...formData,
       schoolName: 'JSS SMCS',
       className: '7',
       subject: 'Maths',
       topics: "Integers, Fractions, Decimals and Rational Numbers",
       language: 'English',
       timeAllowed: '2 hours 30 minutes',
-      sourceMaterials: 'Chapter 3 from the NCERT textbook focusing on rational number operations.',
+      sourceMaterials: 'Focusing on rational number operations and basic fractions.',
       sourceMode: 'reference'
     });
     setQuestionDistribution([
@@ -268,7 +268,25 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
                 </div>
 
                 <div className="space-y-6 border-t dark:border-slate-700 pt-8">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">1. Paper Details</h3>
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">1. Paper Details</h3>
+                        <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900 rounded-lg">
+                            <button 
+                                type="button" 
+                                onClick={() => setFormData(prev => ({...prev, modelQuality: 'flash'}))}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.modelQuality === 'flash' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                            >
+                                Fast (Flash)
+                            </button>
+                            <button 
+                                type="button" 
+                                onClick={() => setFormData(prev => ({...prev, modelQuality: 'pro'}))}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.modelQuality === 'pro' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                            >
+                                Pro (Complex)
+                            </button>
+                        </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField name="schoolName" label="School Name" value={formData.schoolName} onChange={handleChange} error={errors.schoolName} />
                         <FormField name="className" label="Class / Grade" value={formData.className} onChange={handleChange} error={errors.className} />
