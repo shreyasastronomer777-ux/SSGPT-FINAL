@@ -74,8 +74,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             document.body.removeChild(container);
             setPagesHtml(pages.length ? pages : ['']);
             
-            // Allow DOM to update before KaTeX
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 150);
+            // Re-trigger math on newly paginated elements
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 200);
         };
         paginate();
     }, [state.paper.htmlContent, state.styles]);
@@ -95,9 +95,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const uploaded = JSON.parse(data) as UploadedImage;
             const rect = e.currentTarget.getBoundingClientRect();
-            // Calculate mouse position relative to the page
-            const x = e.clientX - rect.left - 75; // Offset by half of default width (150)
-            const y = e.clientY - rect.top - 50;  // Offset by half of default height (100)
+            // Offset calculation to drop exactly at mouse tip
+            const x = e.clientX - rect.left - 75;
+            const y = e.clientY - rect.top - 50;
             
             setState(s => ({ 
                 ...s, 
@@ -137,8 +137,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             }
             if (res.text) {
                 setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated." }]);
-                // Trigger math rendering on the chat too
-                setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 50);
+                setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
             }
         } catch (e) { console.error(e); }
         finally { setIsCoEditorTyping(false); }
@@ -146,7 +145,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick: onSaveAndExit,
-        openExportModal: () => alert("Exporting..."),
+        openExportModal: () => alert("Exporting PDF..."),
         paperSubject: state.paper.subject,
         undo: () => {}, redo: () => {}, canUndo: false, canRedo: false
     }));

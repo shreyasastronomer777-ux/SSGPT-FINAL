@@ -42,11 +42,14 @@ You are an expert Question Paper Designer. Generate a high-quality exam paper in
 4. **FRACTIONS:** Never use "3/4". Always use "$\\frac{3}{4}$".
 5. **SYMBOLS:** Use $\\times$ for multiplication and $\\div$ for division.
 
+**QUESTION TYPE SPECIFICS:**
+- For "Match the Following": The "options" field MUST be an object: { "columnA": ["item1", "item2"...], "columnB": ["matchA", "matchB"...] }. Column B should be shuffled.
+
 Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
 Question mix: ${JSON.stringify(questionDistribution)}
 ${sourceMaterials ? `Source Material: ${sourceMaterials}` : ''}
 
-Return JSON array of objects: {type, questionText, options: string[] | null, answer: string, marks, difficulty, taxonomy}.
+Return JSON array of objects: {type, questionText, options: any, answer: any, marks, difficulty, taxonomy}.
 `;
 
     try {
@@ -62,7 +65,7 @@ Return JSON array of objects: {type, questionText, options: string[] | null, ans
                         properties: {
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                            options: { type: Type.OBJECT, properties: { columnA: { type: Type.ARRAY, items: { type: Type.STRING } }, columnB: { type: Type.ARRAY, items: { type: Type.STRING } } }, nullable: true },
                             answer: { type: Type.STRING },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
@@ -126,7 +129,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
                 properties: {
                     type: { type: Type.STRING, enum: Object.values(QuestionType) },
                     questionText: { type: Type.STRING },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    options: { type: Type.OBJECT },
                     answer: { type: Type.STRING },
                     marks: { type: Type.NUMBER },
                 },
