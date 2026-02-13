@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { type PaperStyles, type WatermarkState, type LogoState } from '../types';
 import { UploadIcon } from './icons/UploadIcon';
@@ -30,23 +29,22 @@ interface EditorSidebarProps {
     onToggleShowQuestions?: () => void;
 }
 
-const fonts = [ { value: "'Times New Roman', Times, serif", label: 'Times New Roman' }, { value: 'Arial, Helvetica, sans-serif', label: 'Arial' }, { value: 'serif', label: 'Serif' }, { value: 'sans-serif', label: 'Sans-Serif' }, { value: "'Courier New', Courier, monospace", label: 'Courier New' }, { value: 'monospace', label: 'Monospace' }, ];
+const fonts = [ 
+    { value: 'Inter, sans-serif', label: 'Inter (Modern Sans)' }, 
+    { value: "'Times New Roman', Times, serif", label: 'Times New Roman (Academic)' }, 
+    { value: "'Playfair Display', serif", label: 'Playfair (Elegant Serif)' }, 
+    { value: 'Montserrat, sans-serif', label: 'Montserrat (Geometric Sans)' }, 
+    { value: "'Open Sans', sans-serif", label: 'Open Sans (Clean Sans)' }, 
+    { value: 'Georgia, serif', label: 'Georgia (Classic Serif)' }, 
+    { value: "'Courier New', Courier, monospace", label: 'Courier New (Fixed Width)' }, 
+];
 const borderStyles = [ { value: 'solid', label: 'Solid' }, { value: 'dashed', label: 'Dashed' }, { value: 'dotted', label: 'Dotted' }, { value: 'double', label: 'Double' }, ];
 
-const watermarkPresets = [
-    { name: 'Diagonal Draft', style: { text: 'DRAFT', rotation: -45, fontSize: 120, opacity: 0.08, color: '#888888'} },
-    { name: 'Confidential', style: { text: 'CONFIDENTIAL', rotation: 0, fontSize: 80, opacity: 0.1, color: '#c44536' } },
-    { name: 'Centered Sample', style: { text: 'SAMPLE', rotation: 0, fontSize: 130, opacity: 0.07, color: '#366bc4' } },
-    { name: 'Angled Urgent', style: { text: 'URGENT', rotation: -25, fontSize: 100, opacity: 0.1, color: '#c436a2' } },
-    { name: 'Copyright Notice', style: { text: `© ${new Date().getFullYear()}`, rotation: 0, fontSize: 20, opacity: 0.5, color: '#000000' } },
-    { name: 'Repeated Copy', style: { text: 'COPY', rotation: -30, fontSize: 40, opacity: 0.06, color: '#555555' } },
-];
 const logoPositions: { value: LogoState['position']; label: string; icon: React.FC<any> }[] = [
     { value: 'header-left', label: 'Header Left', icon: AlignLeftIcon },
     { value: 'header-center', label: 'Header Center', icon: AlignCenterIcon },
     { value: 'header-right', label: 'Header Right', icon: AlignRightIcon },
     { value: 'none', label: 'None', icon: NoneIcon },
-    { value: 'background', label: 'Background', icon: BackgroundIcon },
 ];
 
 const TextControl: React.FC<{label: string, value: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void}> = ({ label, value, onChange }) => (
@@ -90,16 +88,6 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({ styles, onStyleChange, pa
     const handleWatermarkUpdate = (updates: Partial<WatermarkState>) => onBrandingUpdate({ watermark: { ...watermark, ...updates } });
     const handleLogoUpdate = (updates: Partial<LogoState>) => onBrandingUpdate({ logo: { ...logo, ...updates } });
 
-    const handleWatermarkImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => { handleWatermarkUpdate({ src: event.target?.result as string }); };
-            reader.readAsDataURL(file);
-        }
-        e.target.value = '';
-    };
-
     return (
         <div className="p-4 space-y-4 pb-20">
             {!isAnswerKeyMode && (
@@ -113,86 +101,51 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({ styles, onStyleChange, pa
                 </div>
             )}
 
-            {isAnswerKeyMode && (
-                <ControlGroup title="Answer Key Settings" isOpenDefault>
-                    <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Show Questions</label>
-                        <button 
-                            onClick={onToggleShowQuestions}
-                            className={`w-11 h-6 rounded-full transition-colors relative ${showQuestionsInKey ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
-                        >
-                            <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${showQuestionsInKey ? 'translate-x-5' : ''}`} />
-                        </button>
-                    </div>
-                </ControlGroup>
-            )}
+            <ControlGroup title="Assessment Mode" isOpenDefault>
+                <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+                    <label className="text-sm font-black text-indigo-700 dark:text-indigo-300 tracking-tight">Answer Key View</label>
+                    <button 
+                        onClick={onToggleShowQuestions}
+                        className={`w-11 h-6 rounded-full transition-all relative ${isAnswerKeyMode ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                    >
+                        <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform ${isAnswerKeyMode ? 'translate-x-5' : ''}`} />
+                    </button>
+                </div>
+                {isAnswerKeyMode && (
+                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider px-1">Marking scheme mode active.</p>
+                )}
+            </ControlGroup>
 
-            <ControlGroup title="Watermark" isOpenDefault={isAnswerKeyMode}>
+            <ControlGroup title="Typography" isOpenDefault>
+                <SelectControl label="Paper Font" value={styles.fontFamily} onChange={e => onStyleChange('fontFamily', e.target.value)} options={fonts} />
+                <ColorControl label="Text Color" value={styles.headingColor} onChange={e => onStyleChange('headingColor', e.target.value)} />
+            </ControlGroup>
+            
+            <ControlGroup title="Watermark">
                 <SelectControl label="Type" value={watermark.type} onChange={e => handleWatermarkUpdate({ type: e.target.value as WatermarkState['type'] })} options={[{value: 'none', label: 'None'}, {value: 'text', label: 'Text'}, {value: 'image', label: 'Image'}]} />
-                
                 {watermark.type === 'text' && (
-                    <div className="space-y-4 animate-fade-in-fast">
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Presets</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {watermarkPresets.map(p => <WatermarkPreset key={p.name} name={p.name} style={p.style} onClick={() => handleWatermarkUpdate(p.style)} />)}
-                            </div>
-                        </div>
-                        <div className="pl-2 border-l-2 dark:border-slate-600 space-y-4 pt-2">
-                            <TextControl label="Text" value={watermark.text || ''} onChange={e => handleWatermarkUpdate({ text: e.target.value })} />
-                            <ColorControl label="Color" value={watermark.color} onChange={e => handleWatermarkUpdate({ color: e.target.value })} />
-                            <RangeControl label="Font Size" value={watermark.fontSize} onChange={e => handleWatermarkUpdate({ fontSize: parseInt(e.target.value, 10)})} min={20} max={200} step={2} unit="px" />
-                            <RangeControl label="Opacity" value={watermark.opacity} onChange={e => handleWatermarkUpdate({ opacity: parseFloat(e.target.value)})} min={0.05} max={1} step={0.05} />
-                            <RangeControl label="Rotation" value={watermark.rotation} onChange={e => handleWatermarkUpdate({ rotation: parseInt(e.target.value, 10)})} min={-90} max={90} step={5} unit="°" />
-                        </div>
-                    </div>
-                )}
-
-                {watermark.type === 'image' && (
-                     <div className="pl-2 border-l-2 dark:border-slate-600 space-y-4 animate-fade-in-fast">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Upload Image</label>
-                        <input type="file" id="watermark-upload" accept="image/png, image/jpeg" onChange={handleWatermarkImageUpload} className="hidden" />
-                        <label htmlFor="watermark-upload" className="cursor-pointer w-full flex items-center justify-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 p-3 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                            <UploadIcon className="w-5 h-5"/> {watermark.src ? 'Change Image' : 'Choose an Image'}
-                        </label>
-                        {watermark.src && <img src={watermark.src} alt="Watermark preview" className="max-w-full h-auto rounded-md border dark:border-slate-600 bg-slate-100 dark:bg-slate-700 p-2 object-contain max-h-24 mx-auto" />}
+                    <div className="space-y-4 pt-2">
+                        <TextControl label="Text" value={watermark.text || ''} onChange={e => handleWatermarkUpdate({ text: e.target.value })} />
+                        <ColorControl label="Color" value={watermark.color} onChange={e => handleWatermarkUpdate({ color: e.target.value })} />
                         <RangeControl label="Opacity" value={watermark.opacity} onChange={e => handleWatermarkUpdate({ opacity: parseFloat(e.target.value)})} min={0.05} max={1} step={0.05} />
-                        <RangeControl label="Rotation" value={watermark.rotation} onChange={e => handleWatermarkUpdate({ rotation: parseInt(e.target.value, 10)})} min={-90} max={90} step={5} unit="°" />
                     </div>
                 )}
             </ControlGroup>
-            
-            <ControlGroup title="Typography">
-                <SelectControl label="Font Family" value={styles.fontFamily} onChange={e => onStyleChange('fontFamily', e.target.value)} options={fonts} />
-                <ColorControl label="Heading Color" value={styles.headingColor} onChange={e => onStyleChange('headingColor', e.target.value)} />
-            </ControlGroup>
-            
-            <ControlGroup title="Border">
-                <ColorControl label="Border Color" value={styles.borderColor} onChange={e => onStyleChange('borderColor', e.target.value)} />
-                <SelectControl label="Border Style" value={styles.borderStyle} onChange={e => onStyleChange('borderStyle', e.target.value)} options={borderStyles} />
-                <RangeControl label="Border Width" value={styles.borderWidth} onChange={e => onStyleChange('borderWidth', parseInt(e.target.value, 10))} min={0} max={10} step={1} unit="px" />
-            </ControlGroup>
 
-            <ControlGroup title="Page & Logo Layout">
+            <ControlGroup title="Page Layout">
                 <SelectControl label="Paper Size" value={paperSize} onChange={e => onPaperSizeChange(e.target.value as PaperSize)} options={[{value: 'a4', label: 'A4 (210 x 297mm)'}, {value: 'letter', label: 'Letter (8.5 x 11in)'}]} />
                 <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Logo Position</label>
-                    <div className="flex items-center justify-between p-1 bg-slate-100 dark:bg-slate-700 rounded-lg mt-1">
+                    <div className="flex items-center justify-between p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
                         {logoPositions.map(({value, label, icon: Icon}) => (
                             <button key={value} onClick={() => handleLogoUpdate({ position: value })} disabled={!logo.src} title={label}
-                                className={`flex-1 p-2 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${logo.position === value ? 'bg-white dark:bg-slate-800 shadow-md text-indigo-600 scale-105 ring-1 ring-black/5' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-600'}`}>
+                                className={`flex-1 p-2 rounded-md transition-all ${logo.position === value ? 'bg-white dark:bg-slate-800 shadow-md text-indigo-600' : 'text-slate-500 hover:bg-slate-200'}`}>
                                 <Icon className="w-5 h-5 mx-auto"/>
                             </button>
                         ))}
                     </div>
                 </div>
-                 {logo.position === 'background' && logo.src && (
-                    <div className="pl-2 border-l-2 dark:border-slate-600 space-y-4 animate-fade-in-fast">
-                         <RangeControl label="Size" value={logo.size} onChange={e => handleLogoUpdate({ size: parseInt(e.target.value, 10)})} min={50} max={500} step={10} unit="px" />
-                         <RangeControl label="Opacity" value={logo.opacity} onChange={e => handleLogoUpdate({ opacity: parseFloat(e.target.value)})} min={0.05} max={1} step={0.05} />
-                    </div>
-                )}
-             </ControlGroup>
+            </ControlGroup>
         </div>
     );
 };
@@ -208,17 +161,6 @@ const RibbonButton: React.FC<{ icon: React.ReactNode; label: string; onClick?: (
     </button>
 );
 
-const WatermarkPreset: React.FC<{name: string, style: Partial<WatermarkState>, onClick: () => void}> = ({ name, style, onClick }) => (
-    <button onClick={onClick} className="p-2 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors text-left space-y-1 hover:shadow-sm">
-        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">{name}</p>
-        <div className="w-full h-12 bg-slate-200 dark:bg-slate-800 rounded-sm flex items-center justify-center overflow-hidden relative">
-            <div className="absolute inset-0 bg-grid-slate-300/50 [mask-image:linear-gradient(0deg,white,transparent)]"></div>
-            <p className="font-black whitespace-nowrap relative z-10" style={{ transform: `rotate(${style.rotation || 0}deg) scale(0.4)`, color: style.color, opacity: (style.opacity || 0.1) * 5 }}>
-                {style.text}
-            </p>
-        </div>
-    </button>
-);
 const ControlGroup: React.FC<{ title: string; children: React.ReactNode, isOpenDefault?: boolean }> = ({ title, children, isOpenDefault = false }) => ( <details className="control-group border-b border-slate-200 dark:border-slate-700 last:border-b-0" open={isOpenDefault}><summary className="py-3 cursor-pointer flex justify-between items-center w-full hover:text-indigo-600 transition-colors"><h4 className="font-semibold text-slate-800 dark:text-slate-200">{title}</h4><ChevronRightIcon className="chevron w-4 h-4 text-slate-500 transition-transform"/></summary><div className="pb-4 space-y-4 animate-fade-in-fast">{children}</div></details> );
 
 export default EditorSidebar;
