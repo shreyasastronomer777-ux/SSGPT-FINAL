@@ -22,7 +22,7 @@ const SpeakIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (<svg xmln
 
 const generatePaperFunctionDeclaration: FunctionDeclaration = { 
   name: 'generatePaper', 
-  description: 'Call this function ONLY when all details for creating a paper (School, Class, Subject, Topics, Time, Question Distribution) have been gathered.', 
+  description: 'Generate a complete exam paper once all institutional and pedagogical details are gathered.', 
   parameters: { 
     type: Type.OBJECT, 
     properties: { 
@@ -31,8 +31,6 @@ const generatePaperFunctionDeclaration: FunctionDeclaration = {
       subject: { type: Type.STRING }, 
       topics: { type: Type.STRING }, 
       timeAllowed: { type: Type.STRING }, 
-      sourceMaterials: { type: Type.STRING }, 
-      sourceMode: { type: Type.STRING, enum: ['strict', 'reference'] }, 
       questionDistribution: { 
         type: Type.ARRAY, 
         items: { 
@@ -55,14 +53,26 @@ const generatePaperFunctionDeclaration: FunctionDeclaration = {
 
 const systemInstruction = `You are SSGPT, an expert AI assistant for educators. 
 
-**CORE MISSION:** Help users create professional exam papers. Collaborate to collect: School Name, Class, Subject, Topics, Time, Language, and a complete Question Distribution (count and marks for each type).
+**MISSION:** Help users create professional exam papers. Gather: School Name, Class, Subject, Topics, Time, Language, and complete Question Distribution.
 
 **STRICT MATH FORMATTING:** 
-- For ALL mathematical content, variable names ($x, y, z$), fractions, formulas, and numeric expressions, you MUST use professional LaTeX wrapped in single dollar signs: $...$. 
-- NEVER use plain text fractions like "3/4". ALWAYS use $\\frac{3}{4}$.
-- This applies to your chat responses AND when calling the \`generatePaper\` tool.
+- ALWAYS use LaTeX $...$ for all mathematical content, fractions (\\frac{num}{den}), and numeric variables.
+- NEVER use plain text math. This applies to your chat responses and tool calls.
 
-**Dual Capability:** You can also answer general questions, write code, or explain concepts. Only use the \`generatePaper\` tool for actual exam creation.`;
+**Dual Capability:** Answer general questions or create exams. Use tool 'generatePaper' ONLY when details are ready.`;
+
+const TypingIndicator: React.FC = () => (
+    <div className="flex items-end gap-3 justify-start animate-slide-in-left">
+        <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className="w-8 h-8 rounded-full self-start flex-shrink-0" />
+        <div className="px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 rounded-bl-none text-slate-800 dark:text-slate-200 shadow-md border border-slate-200 dark:border-slate-700/80">
+            <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+            </div>
+        </div>
+    </div>
+);
 
 const triggerMathRendering = (element: HTMLElement | null) => {
     if (!element) return;
@@ -84,49 +94,25 @@ const triggerMathRendering = (element: HTMLElement | null) => {
 };
 
 function parseMarkdownToHTML(text: string) {
-    // Basic Markdown conversion that doesn't break LaTeX backslashes
     let html = text.trim()
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-    
-    // Code blocks
     html = html.replace(/```([\s\S]*?)```/g, (match, code) => `<pre class="bg-slate-100 dark:bg-slate-900 p-3 rounded-lg overflow-x-auto my-2"><code>${code.trim()}</code></pre>`);
-    
-    // Inline bold/italic
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    
-    // Lists
     html = html.replace(/^([ \t]*)([\*\-]) (.*$)/gm, (match, indent, bullet, content) => `${indent}<ul><li>${content}</li></ul>`);
     html = html.replace(/<\/ul>\s*<ul>/g, '');
     html = html.replace(/^([ \t]*)\d+\. (.*$)/gm, (match, indent, content) => `${indent}<ol><li>${content}</li></ol>`);
     html = html.replace(/<\/ol>\s*<ol>/g, '');
-    
-    // Newlines
     html = html.replace(/\n/g, '<br />').replace(/(<br \/>\s*){2,}/g, '<br />');
-    
     return html;
 }
-
-// Fix: Added missing TypingIndicator component used in ChatbotInterface render method.
-const TypingIndicator: React.FC = () => (
-    <div className="flex items-end gap-3 justify-start animate-slide-in-left">
-        <img src={SSGPT_LOGO_URL} alt="SSGPT Logo" className="w-8 h-8 rounded-full self-start flex-shrink-0" />
-        <div className="px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 rounded-bl-none text-slate-800 dark:text-slate-200 shadow-md border border-slate-200 dark:border-slate-700/80">
-            <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
-            </div>
-        </div>
-    </div>
-);
 
 const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> = ({ onGenerate }) => {
   const [messages, setMessages] = useState<Message[]>([]); const [chat, setChat] = useState<Chat | null>(null); const [userInput, setUserInput] = useState(''); const [isBotTyping, setIsBotTyping] = useState(false); const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]); const messagesEndRef = useRef<HTMLDivElement>(null); const fileInputRef = useRef<HTMLInputElement>(null);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false); const [isLiveSessionActive, setIsLiveSessionActive] = useState(false); const [isAiSpeaking, setIsAiSpeaking] = useState(false); const sessionPromiseRef = useRef<Promise<any> | null>(null); const outputAudioContextRef = useRef<AudioContext | null>(null); let nextStartTime = 0;
-  const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]); const [currentUserText, setCurrentUserText] = useState(''); const [currentAiText, setCurrentAiText] = useState(''); userUtteranceRef.current = ''; aiUtteranceRef.current = ''; const conversationEndRef = useRef<HTMLDivElement>(null);
+  const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]); const [currentUserText, setCurrentUserText] = useState(''); const [currentAiText, setCurrentAiText] = useState(''); const userUtteranceRef = useRef(''); const aiUtteranceRef = useRef(''); const conversationEndRef = useRef<HTMLDivElement>(null);
   const [useSearch, setUseSearch] = useState(false); const [useThinking, setUseThinking] = useState(false);
   const audioPlaybackSource = useRef<AudioBufferSourceNode | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -134,24 +120,21 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   const initChat = useCallback(async () => {
     setIsBotTyping(true); setMessages([]);
     try {
-      if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
+      if (!process.env.API_KEY) throw new Error("API_KEY not configured.");
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const newChat = ai.chats.create({ model: 'gemini-3-flash-preview', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
       setChat(newChat);
-      const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
-      if (!importedFilesRaw) {
-        const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
-        const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
-        setMessages([newBotMessage]);
-        for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + (chunk.text || '')} : msg)); }
-      }
-    } catch (error) { console.error("Failed to initialize chatbot:", error); setMessages([{ id: 'bot-error', sender: 'bot', text: "Sorry, I'm having trouble connecting right now." }]);
+      const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
+      const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
+      setMessages([newBotMessage]);
+      for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + (chunk.text || '')} : msg)); }
+    } catch (error) { setMessages([{ id: 'bot-error', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   }, []);
     
   useEffect(() => { initChat(); outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }); return () => { isLiveSessionActive && sessionPromiseRef.current?.then(session => session.close()); }; }, [initChat]);
 
-  // KaTeX rendering loop
+  // Re-render math on message change
   useEffect(() => {
     const timer = setTimeout(() => triggerMathRendering(chatContainerRef.current), 150);
     return () => clearTimeout(timer);
@@ -160,36 +143,34 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   const handleSendMessage = async (messageText: string) => {
     const text = messageText.trim();
     if ((!text && attachedFiles.length === 0) || isBotTyping || !chat) return;
-    
     setMessages(prev => [...prev, { id: `user-${Date.now()}`, sender: 'user', text: text || "[Files attached]" }]);
     setUserInput(''); setIsBotTyping(true);
-    
     try {
       const messageParts: Part[] = []; if (text) messageParts.push({ text });
       attachedFiles.forEach(f => messageParts.push({ inlineData: { data: f.data, mimeType: f.mimeType } }));
       setAttachedFiles([]);
-
       const responseStream = await generateChatResponseStream(chat, messageParts, useSearch, useThinking);
       const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
       setMessages(prev => [...prev, newBotMessage]);
-      
       let functionCalls: any[] = [];
       for await (const chunk of responseStream) {
         if (chunk.functionCalls) functionCalls = functionCalls.concat(chunk.functionCalls);
         if(chunk.text) setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg));
       }
       if (functionCalls.length > 0 && functionCalls[0].name === 'generatePaper') { handleTriggerGeneration(functionCalls[0].args); return; }
-    } catch (error) { console.error("Chat Error:", error); setMessages(prev => [...prev, { id: 'bot-err', sender: 'bot', text: "I encountered an error. Please try again." }]);
+    } catch (error) { setMessages(prev => [...prev, { id: 'bot-err', sender: 'bot', text: "Internal Error Occurred" }]);
     } finally { setIsBotTyping(false); }
   };
   
-  const handleTriggerGeneration = (args: any) => { onGenerate(args as FormData); };
+  const handleTriggerGeneration = (args: any) => { 
+    onGenerate(args as FormData); 
+  };
   
   const startLiveSession = async (voice: VoiceOption) => {
     setIsVoiceModalOpen(false); setIsLiveSessionActive(true); setConversationHistory([]); userUtteranceRef.current = ''; aiUtteranceRef.current = '';
     if (!process.env.API_KEY) { setCurrentUserText("Internal Error Occurred"); return; }
     let stream: MediaStream; try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(err) { setIsLiveSessionActive(false); return; }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }); nextStartTime = 0;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }); const sources = new Set<AudioBufferSourceNode>(); nextStartTime = 0;
     sessionPromiseRef.current = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {
@@ -199,7 +180,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
             if (message.serverContent?.turnComplete) { if (userUtteranceRef.current || aiUtteranceRef.current) setConversationHistory(prev => [...prev, { user: userUtteranceRef.current, ai: aiUtteranceRef.current, id: Date.now() }]); userUtteranceRef.current = ''; aiUtteranceRef.current = ''; }
             if (message.toolCall?.functionCalls?.[0]?.name === 'generatePaper') { handleTriggerGeneration(message.toolCall.functionCalls[0].args); endLiveSession(); return; }
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (base64Audio) { setIsAiSpeaking(true); const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContextRef.current!, 24000, 1); const source = outputAudioContextRef.current!.createBufferSource(); source.buffer = audioBuffer; source.connect(outputAudioContextRef.current!.destination); source.addEventListener('ended', () => { setIsAiSpeaking(false); }); source.start(nextStartTime); nextStartTime = nextStartTime + audioBuffer.duration; }
+            if (base64Audio) { setIsAiSpeaking(true); const outputCtx = outputAudioContextRef.current!; nextStartTime = Math.max(nextStartTime, outputCtx.currentTime); const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1); const source = outputCtx.createBufferSource(); source.buffer = audioBuffer; source.connect(outputCtx.destination); source.addEventListener('ended', () => { sources.delete(source); if(sources.size === 0) setIsAiSpeaking(false); }); source.start(nextStartTime); nextStartTime = nextStartTime + audioBuffer.duration; sources.add(source); }
+            if (message.serverContent?.interrupted) { for (const source of sources.values()) source.stop(); sources.clear(); nextStartTime = 0; setIsAiSpeaking(false); }
         },
         onerror: (e) => { console.error("Live Error", e); endLiveSession(); },
         onclose: () => { stream?.getTracks().forEach(t => t.stop()); inputAudioContext.close(); },
@@ -211,8 +193,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
 
   const MessageBubble: React.FC<{ message: Message }> = ({ message }) => (
     <div className={`flex items-start gap-3 w-full ${message.sender === 'user' ? 'justify-end animate-slide-in-right' : 'justify-start animate-slide-in-left'}`}>
-        {message.sender === 'bot' && <img src={SSGPT_LOGO_URL} alt="SSGPT" className="w-8 h-8 rounded-full shadow-sm" />}
-        <div className={`prose-chat px-4 py-3 rounded-2xl max-w-xl shadow-md border ${message.sender === 'bot' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200' : 'bg-green-100 dark:bg-green-900/40'}`}>
+        {message.sender === 'bot' && <img src={SSGPT_LOGO_URL} alt="SSGPT" className="w-8 h-8 rounded-full shadow-sm flex-shrink-0" />}
+        <div className={`prose-chat px-4 py-3 rounded-2xl max-w-xl shadow-md border ${message.sender === 'bot' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700/80' : 'bg-green-100 dark:bg-green-900/40 text-slate-800 dark:text-slate-200 border-green-200 dark:border-green-800/50'}`}>
             <div dangerouslySetInnerHTML={{ __html: parseMarkdownToHTML(message.text) }} />
         </div>
     </div>
@@ -229,22 +211,22 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
         </div>
         <div className="p-4 bg-white dark:bg-black">
             <div className="max-w-3xl mx-auto flex gap-2">
-                <input value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder="Message SSGPT..." className="flex-1 p-3 rounded-xl border dark:border-slate-700 bg-transparent" />
-                <button onClick={() => setIsVoiceModalOpen(true)} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg transition-transform hover:scale-105"><VoiceIcon className="w-6 h-6"/></button>
-                <button onClick={() => handleSendMessage(userInput)} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg transition-transform hover:scale-105"><SendIcon className="w-6 h-6"/></button>
+                <input value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder="Message SSGPT..." className="flex-1 p-3 rounded-xl border dark:border-slate-700 bg-transparent outline-none focus:ring-2 focus:ring-indigo-500" />
+                <button onClick={() => setIsVoiceModalOpen(true)} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg hover:scale-105 transition-transform"><VoiceIcon className="w-6 h-6"/></button>
+                <button onClick={() => handleSendMessage(userInput)} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg hover:scale-105 transition-transform"><SendIcon className="w-6 h-6"/></button>
             </div>
         </div>
         {isVoiceModalOpen && <VoiceModeModal onClose={() => setIsVoiceModalOpen(false)} onStart={startLiveSession} />}
         {isLiveSessionActive && (
              <div className="fixed inset-0 bg-gray-900/95 backdrop-blur-2xl flex flex-col items-center justify-center z-50 p-4 animate-fade-in">
                  <div className={`w-48 h-48 rounded-full border-4 ${isAiSpeaking ? 'border-indigo-500 animate-pulse' : 'border-slate-700'} flex items-center justify-center overflow-hidden shadow-2xl`}>
-                    <img src={SSGPT_LOGO_URL} className="w-24 h-24" alt="AI Avatar" />
+                    <img src={SSGPT_LOGO_URL} className="w-24 h-24" alt="Avatar" />
                  </div>
                  <div className="my-10 text-white text-center">
                     <p className="text-2xl font-bold">{currentUserText || "..."}</p>
                     <p className="text-xl opacity-70 mt-2">{currentAiText}</p>
                  </div>
-                 <button onClick={endLiveSession} className="bg-red-600 text-white px-10 py-4 rounded-full font-black shadow-xl transition-transform hover:scale-105">End Session</button>
+                 <button onClick={endLiveSession} className="bg-red-600 text-white px-10 py-4 rounded-full font-black shadow-xl hover:scale-105 transition-transform">End Session</button>
              </div>
         )}
     </div>
