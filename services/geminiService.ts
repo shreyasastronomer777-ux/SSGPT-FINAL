@@ -36,10 +36,10 @@ You are an expert Question Paper Designer. Generate a high-quality exam paper in
 **STRICT MATHEMATICAL FORMATTING (CRITICAL):**
 1. **LATEX FOR ALL MATH:** Use LaTeX for ALL formulas, fractions, variables, and symbols (multiplication $\\times$, division $\\div$, etc.).
 2. **DELIMITERS:** Wrap ALL math content in single dollar signs: $...$.
-3. **DOUBLE BACKSLASHES:** In the JSON output, you MUST use DOUBLE BACKSLASHES (e.g., \\\\frac) for all LaTeX commands. 
+3. **JSON ESCAPING:** In the JSON output strings, you MUST use DOUBLE BACKSLASHES for all LaTeX commands. 
    - CORRECT: "$\\times$", "$\\frac{3}{5}$", "$\\sqrt{x}$".
    - INCORRECT: "\times", "\frac{3}{5}".
-4. **MATCH THE FOLLOWING:** For Match the Following questions, the 'options' field MUST be an object: {"columnA": ["item1", "item2"...], "columnB": ["itemA", "itemB"...]}. Shuffe Column B.
+4. **MATCH THE FOLLOWING:** For "Match the Following" questions, the "options" field MUST be an object: {"columnA": ["item1", "item2", "item3", "item4", "item5"], "columnB": ["matchB", "matchA", "matchD", "matchC", "matchE"]}. Shuffle Column B so they aren't directly across from their match.
 
 Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
 Question mix: ${JSON.stringify(questionDistribution)}
