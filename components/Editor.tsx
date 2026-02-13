@@ -54,13 +54,13 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your assessment. I've optimized the layout for professional standards. Use LaTeX for math." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper layout optimized for professional board standards. I've tightened spacing and improved math clarity." }]);
         onReady();
     }, []);
 
     const paginate = useCallback(() => {
         const container = document.createElement('div');
-        container.style.width = `${A4_WIDTH_PX - 120}px`; // Accounting for margins
+        container.style.width = `${A4_WIDTH_PX - 120}px`; 
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
@@ -74,7 +74,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         
         container.innerHTML = htmlContent;
         document.body.appendChild(container);
-        
         triggerMathRendering(container);
 
         const contentRoot = container.querySelector('#paper-root') || container.children[0];
@@ -83,7 +82,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        const maxPageHeight = A4_HEIGHT_PX - 160; 
+        const maxPageHeight = A4_HEIGHT_PX - 120; // Increased usable height for tighter pagination
 
         children.forEach(child => {
             const el = child as HTMLElement;
@@ -97,7 +96,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 currentPageHtml = ""; 
                 currentHeight = 0; 
             }
-            
             currentPageHtml += el.outerHTML; 
             currentHeight += elHeight;
         });
@@ -105,13 +103,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
         setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Loading content...</div>']);
-        
         setTimeout(() => triggerMathRendering(pagesContainerRef.current), 150);
     }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
-    useEffect(() => {
-        paginate();
-    }, [paginate]);
+    useEffect(() => { paginate(); }, [paginate]);
 
     const handleExportPDF = async () => {
         if (isExporting) return;
@@ -120,42 +115,34 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
             const pdfH = pdf.internal.pageSize.getHeight();
-            
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
             
-            if (!pageElements || pageElements.length === 0) {
-                alert("Nothing to export.");
-                return;
-            }
+            if (!pageElements || pageElements.length === 0) { alert("Nothing to export."); return; }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 triggerMathRendering(el);
-                
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 200)); // Delay for math settling
 
                 const canvas = await html2canvas(el, { 
-                    scale: 2.5, // High crispness
+                    scale: 2.5, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
-                    allowTaint: true
+                    allowTaint: true,
+                    imageTimeout: 0
                 });
                 
                 const imgData = canvas.toDataURL('image/jpeg', 0.98);
                 if (i > 0) pdf.addPage();
-                
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
             }
-            
-            const filename = `${state.paper.subject.replace(/\s+/g, '_')}${isAnswerKeyMode ? '_Answer_Key' : '_Paper'}.pdf`;
-            pdf.save(filename);
+            const name = `${state.paper.subject.replace(/\s+/g, '_')}${isAnswerKeyMode ? '_Key' : ''}.pdf`;
+            pdf.save(name);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("An error occurred during PDF generation.");
-        } finally {
-            setIsExporting(false);
-        }
+            alert("Error generating PDF.");
+        } finally { setIsExporting(false); }
     };
 
     const handleCoEditorSend = async (msg: string) => {
@@ -165,7 +152,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
-                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated paper." }]);
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Applied updates." }]);
                 setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
             }
         } catch (e) { console.error(e); }
@@ -185,8 +172,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             {isExporting && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
-                    <h2 className="text-2xl font-black tracking-tight">Generating Professional PDF</h2>
-                    <p className="text-slate-400 mt-2 px-10 text-center">Processing high-resolution pages and LaTeX math expressions.</p>
+                    <h2 className="text-2xl font-black tracking-tight">Exporting PDF</h2>
+                    <p className="text-slate-400 mt-2 px-10 text-center">Rendering math formulas and tightening layout...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -219,7 +206,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-12 relative overflow-hidden" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, border: `${state.styles.borderWidth}px solid ${state.styles.borderColor}` }}>
-                        <div className="paper-page-content prose max-w-none p-[60px_70px] select-text" 
+                        <div className="paper-page-content prose max-w-none p-[50px_60px] select-text" 
                              style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                     </div>

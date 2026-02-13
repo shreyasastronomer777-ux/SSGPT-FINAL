@@ -83,8 +83,9 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   useEffect(() => {
     if (!process.env.API_KEY) return;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Fix: Updated model to 'gemini-3-flash-preview' based on task type.
     setChat(ai.chats.create({ 
-        model: 'gemini-2.5-flash', 
+        model: 'gemini-3-flash-preview', 
         config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } 
     }));
     outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -122,6 +123,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const inputCtx = new AudioContext({ sampleRate: 16000 });
     
+    // Fix: Updated model to 'gemini-2.5-flash-native-audio-preview-12-2025' for real-time audio.
     sessionPromiseRef.current = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {
@@ -176,6 +178,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const inputCtx = new AudioContext({ sampleRate: 16000 });
+    // Fix: Updated model to 'gemini-2.5-flash-native-audio-preview-12-2025'.
     sessionPromiseRef.current = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {

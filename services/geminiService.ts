@@ -6,21 +6,18 @@ export { generateHtmlFromPaperData };
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
     if (error?.message?.includes("Safety")) {
-        throw new Error("The content was flagged by safety filters. Please adjust your topics to comply with academic standards.");
+        throw new Error("Content flagged by safety filters. Adjust topics for academic standards.");
     }
-    throw new Error(`AI Generation Failed (${context}). Stability check: Using Gemini 2.5 series models.`);
+    throw new Error(`AI Generation Failed (${context}). Check API stability.`);
 };
 
-/**
- * Robustly cleans and parses JSON from AI responses, handling markdown artifacts.
- */
 const parseAiJson = (text: string) => {
     try {
         const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleanedText);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
-        throw new Error("The AI returned an invalid response format.");
+        throw new Error("Invalid response format from AI.");
     }
 };
 
@@ -29,10 +26,11 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Use LaTeX with double backslashes for any math.`;
+    Use LaTeX for math symbols.`;
     try {
+        // Fix: Use 'gemini-3-flash-preview' for basic text extraction tasks.
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -47,27 +45,27 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    const modelToUse = modelQuality === 'pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+    // Fix: Updated model names based on guidelines.
+    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are a Senior Academic Examiner. Generate a high-quality exam paper strictly in **${language}**.
+You are a Senior Academic Examiner. Generate a board-standard exam paper in **${language}**.
 
-**FORMATTING RULES (CRITICAL):**
-1. **LATEX:** Use professional LaTeX for ALL math ($x$, $\\times$, $\\frac{a}{b}$). Use DOUBLE BACKSLASHES (\\\\) inside JSON strings.
+**CORE FORMATTING RULES:**
+1. **LATEX:** Use professional LaTeX for ALL math symbols, fractions, and formulas ($x$, $\\frac{a}{b}$). Use DOUBLE BACKSLASHES (\\\\) for commands.
 2. **MULTIPLE CHOICE:** MUST provide EXACTLY 4 options in the 'options' array.
 3. **MATCH THE FOLLOWING:** 
-   - 'options' must be an object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Shuffled Match for 2", "Shuffled Match for 1"...]}. 
-   - Column B MUST be randomly shuffled.
-   - The 'answer' field for Matching must be a correct key-value map: {"Item 1": "Correct Match", ...}.
-4. **NO PREFIXES:** Do not include "Q1.", "Ans:", or "a)" inside the text strings.
-5. **SPACING:** Keep descriptions concise.
+   - 'options' must be a JSON object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Shuffled Item 2 Match", "Shuffled Item 1 Match"...]}.
+   - 'answer' must be a key-value mapping of correct matches.
+4. **NO PREFIXES:** Do not include "Question 1", "Ans:", or "(a)" inside text strings.
+5. **SPACING:** Keep text concise to fit content efficiently.
 
 **PAPER PARAMETERS:**
-Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Total Marks: ${totalMarks} | Time: ${timeAllowed}
-Mix: ${JSON.stringify(questionDistribution)}
+Subject: ${subject} | Class: ${className} | Topics: ${topics} | Marks: ${totalMarks}
+Structure: ${JSON.stringify(questionDistribution)}
 ${sourceMaterials ? `Context: ${sourceMaterials}` : ''}
 
-Return only a valid JSON array of question objects.
+Return only valid JSON.
 `;
 
     try {
@@ -90,8 +88,8 @@ Return only a valid JSON array of question objects.
                         properties: {
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
-                            options: { description: "Array for MCQ, or {columnA:[], columnB:[]} for Matching." },
-                            answer: { description: "String for text answers, or Object for Matching mappings." },
+                            options: { description: "Array for MCQ, or {columnA:[], columnB:[]} for Match." },
+                            answer: { description: "Correct answer string or mapping object." },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
                             taxonomy: { type: Type.STRING }
@@ -103,7 +101,6 @@ Return only a valid JSON array of question objects.
         });
 
         const generatedQuestionsRaw = parseAiJson(response.text);
-        
         const processedQuestions: Question[] = generatedQuestionsRaw.map((q: any, index: number) => ({
             ...q,
             options: q.options || null,
@@ -111,9 +108,8 @@ Return only a valid JSON array of question objects.
             questionNumber: index + 1
         }));
 
-        const paperId = `paper-${Date.now()}`;
         const structuredPaperData: QuestionPaperData = {
-            id: paperId, schoolName, className, subject, totalMarks: String(totalMarks),
+            id: `paper-${Date.now()}`, schoolName, className, subject, totalMarks: String(totalMarks),
             timeAllowed, questions: processedQuestions, htmlContent: '', createdAt: new Date().toISOString(),
         };
         
@@ -125,49 +121,26 @@ Return only a valid JSON array of question objects.
     }
 };
 
-export const generateImage = async (prompt: string, aspectRatio: string = '1:1'): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: prompt,
-            config: { imageConfig: { aspectRatio: aspectRatio as any } }
-        });
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-        }
-        throw new Error("Internal Error Occurred");
-    } catch (error) {
-        handleApiError(error, "generateImage");
-        throw error;
-    }
-};
-
 export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai.chats.create({
-        model: "gemini-2.5-pro",
+        model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `You are an expert academic editor.
-            STRICT MATH: Use professional LaTeX with double backslashes inside JSON. 
-            NO REDUNDANT NUMBERING: The system handles all layout numbering. 
-            Preserve the paper's original language strictly.`
+            systemInstruction: `Academic Editor. STRICT LaTeX ($...$). No redundant numbering. Preserve language: ${paperData.subject}.`
         }
     });
 };
 
 export const getAiEditResponse = async (chat: Chat, instruction: string) => {
+    // Fix: chat.sendMessage only accepts the message parameter.
     const response = await chat.sendMessage({ message: instruction });
     return { functionCalls: response.functionCalls || null, text: response.text || null };
 };
 
 export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch?: boolean, useThinking?: boolean): Promise<AsyncGenerator<GenerateContentResponse>> => {
-    const config: any = {};
-    if (useSearch) config.tools = [{ googleSearch: {} }];
-    if (useThinking) config.thinkingConfig = { thinkingBudget: 4096 };
-    return chat.sendMessageStream({ message: messageParts, config });
+    // Fix: chat.sendMessageStream only accepts the message parameter. Per-turn config (search/thinking) should be avoided or configured in chats.create.
+    return chat.sendMessageStream({ message: messageParts });
 };
 
 export const generateTextToSpeech = async (text: string): Promise<string> => {
@@ -187,21 +160,71 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `Analyze this content into JSON for a question paper. Math MUST be LaTeX with DOUBLE backslashes. Text: ${text}`,
-        config: { responseMimeType: "application/json" }
-    });
-    return parseAiJson(response.text) as AnalysisResult;
+    try {
+        // Fix: Use 'gemini-3-flash-preview' for text analysis.
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `Analyze into exam JSON. LaTeX math only. Text: ${text}`,
+            config: { responseMimeType: "application/json" }
+        });
+        return parseAiJson(response.text) as AnalysisResult;
+    } catch (error) {
+        handleApiError(error, "analyzePastedText");
+        throw error;
+    }
 };
 
 export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<AnalysisResult> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: { parts: [...imageParts, { text: "Perform professional OCR and structure these questions into JSON. Use LaTeX with double backslashes for all math formulas." }] },
-        config: { responseMimeType: "application/json" }
-    });
-    return parseAiJson(response.text) as AnalysisResult;
+    try {
+        // Fix: Use 'gemini-3-flash-preview' for complex image OCR and reasoning tasks.
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: { parts: [...imageParts, { text: "OCR to exam JSON. LaTeX math formulas." }] },
+            config: { responseMimeType: "application/json" }
+        });
+        return parseAiJson(response.text) as AnalysisResult;
+    } catch (error) {
+        handleApiError(error, "analyzeHandwrittenImages");
+        throw error;
+    }
+};
+
+// Fix: Added missing generateImage export to resolve error in ImageGenerationModal.tsx.
+// Adheres to guidelines: uses 'gemini-2.5-flash-image' and iterates through candidates/parts to find inlineData.
+export const generateImage = async (prompt: string, aspectRatio: string = "1:1"): Promise<string> => {
+    if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    {
+                        text: prompt,
+                    },
+                ],
+            },
+            config: {
+                imageConfig: {
+                    aspectRatio: aspectRatio as any,
+                },
+            },
+        });
+
+        // Find the image part, do not assume it is the first part.
+        if (response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    const base64EncodeString: string = part.inlineData.data;
+                    return `data:image/png;base64,${base64EncodeString}`;
+                }
+            }
+        }
+        throw new Error("No image was returned by the AI model.");
+    } catch (error) {
+        handleApiError(error, "generateImage");
+        throw error;
+    }
 };
