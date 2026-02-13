@@ -54,13 +54,13 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your assessment. Use professional LaTeX for math. I've optimized the layout for professional board standards." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "I've been optimized for board-standard professional exports. Ready to refine your assessment. What would you like to update?" }]);
         onReady();
     }, []);
 
     const paginate = useCallback(() => {
         const container = document.createElement('div');
-        // Subtract more for margins to ensure it never clips
+        // Account for margins so it never clips horizontally
         container.style.width = `${A4_WIDTH_PX - 150}px`;
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
@@ -82,14 +82,14 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        const maxPageHeight = A4_HEIGHT_PX - 150; // Accounting for 75px top/bottom padding
+        const maxPageHeight = A4_HEIGHT_PX - 160; // Leave space for headers/footers
 
         children.forEach(child => {
             const el = child as HTMLElement;
-            // Get accurate height including margins
+            // Accurately calculate height including all computed styles
             const style = window.getComputedStyle(el);
-            const marginTop = parseFloat(style.marginTop);
-            const marginBottom = parseFloat(style.marginBottom);
+            const marginTop = parseFloat(style.marginTop || '0');
+            const marginBottom = parseFloat(style.marginBottom || '0');
             const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
             
             // If this element (like a table) would overflow, move to new page
@@ -105,7 +105,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
         if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
-        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Assembling Assessment Content...</div>']);
+        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Loading content...</div>']);
         
         // Re-trigger math on newly paginated elements
         setTimeout(() => triggerMathRendering(pagesContainerRef.current), 150);
@@ -131,11 +131,11 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
-                // Ensure math is rendered at high res
+                // Pre-render math symbols for maximum sharpness
                 triggerMathRendering(el);
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 3.5, // High resolution for professional print
+                    scale: 3.5, // High resolution for clear, professional print
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
@@ -145,14 +145,14 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                // Match image to full A4 page
+                // Map the high-res canvas image back to the A4 page size
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
             }
-            const suffix = isAnswerKeyMode ? '_Key' : '_Exam';
+            const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Export failed. Memory limit might be exceeded. Try with fewer pages.");
+            alert("Sorry, there was an error exporting the PDF. Memory may be low.");
         } finally {
             setIsExporting(false);
         }
@@ -165,7 +165,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
-                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Applied refinement." }]);
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated paper." }]);
                 setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
             }
         } catch (e) { console.error(e); }
@@ -184,9 +184,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
             {isExporting && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center text-white">
-                    <SpinnerIcon className="w-20 h-20 mb-6 text-indigo-400" />
+                    <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
                     <h2 className="text-2xl font-black tracking-tight">Generating Professional PDF</h2>
-                    <p className="text-slate-400 mt-2 max-w-sm text-center px-6">Processing high-resolution layout and complex LaTeX expressions for Board-standard quality.</p>
+                    <p className="text-slate-400 mt-2 px-10 text-center">Processing high-resolution pages and LaTeX math expressions for board-standard output.</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">

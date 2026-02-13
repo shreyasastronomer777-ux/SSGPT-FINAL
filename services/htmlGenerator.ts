@@ -69,9 +69,9 @@ const renderOptions = (question: Question): string => {
         `).join('');
 
         return `
-            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; border: 2.5px solid #000; background-color: #fff; break-inside: avoid;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; border: 2px solid #000; background-color: #fff; break-inside: avoid;">
                 <thead>
-                    <tr style="text-align: left; background-color: #f8fafc; border-bottom: 2.5px solid #000;">
+                    <tr style="text-align: left; background-color: #f8fafc; border-bottom: 2px solid #000;">
                         <th style="padding: 12px; border: 2px solid #000; width: 50%; font-weight: 800; text-transform: uppercase; font-size: 0.9em; letter-spacing: 0.5px;">Column A</th>
                         <th style="padding: 12px; border: 2px solid #000; width: 50%; font-weight: 800; text-transform: uppercase; font-size: 0.9em; letter-spacing: 0.5px;">Column B</th>
                     </tr>
@@ -91,7 +91,7 @@ const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
         </div>
     ` : '';
 
-    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 3.5rem; width: 100%;">
+    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 3rem; width: 100%;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
@@ -130,16 +130,16 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         <div style="text-align: center; width: 100%; margin-bottom: 35px; break-inside: avoid;">
             ${logoAlignment === 'center' ? logoImgTag : ''}
             <h1 style="margin: 0; font-size: 32px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">${escapeHtml(paperData.schoolName)}</h1>
-            <h2 style="margin: 10px 0; font-size: 24px; text-decoration: underline; font-weight: bold;">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - OFFICIAL ANSWER KEY' : ''}</h2>
+            <h2 style="margin: 10px 0; font-size: 24px; text-decoration: underline; font-weight: bold;">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - ANSWER KEY' : ''}</h2>
             <p style="margin: 5px 0; font-weight: 600; font-size: 1.4em;">Class: ${escapeHtml(paperData.className)}</p>
-            <hr style="border: 0; border-top: 4.5px solid #000; margin-top: 20px;">
+            <hr style="border: 0; border-top: 4px solid #000; margin-top: 20px;">
             <table style="width: 100%; margin: 12px 0; font-weight: bold; font-size: 1.3em;">
                 <tr>
                     <td style="text-align: left;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
                     <td style="text-align: right;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
                 </tr>
             </table>
-            <hr style="border: 0; border-top: 3px solid #000; margin-bottom: 45px;">
+            <hr style="border: 0; border-top: 2px solid #000; margin-bottom: 45px;">
         </div>
     `;
 
@@ -151,7 +151,7 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         
         contentHtml += `
             <div style="text-align: center; margin: 60px 0 25px; font-weight: 900; text-transform: uppercase; text-decoration: underline; font-size: 1.6em; break-inside: avoid;">Section ${String.fromCharCode(64 + sectionCount)}</div>
-            <div style="display: flex; justify-content: space-between; border-bottom: 4px solid #000; padding-bottom: 10px; margin-bottom: 40px; font-weight: bold; break-inside: avoid;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 3px solid #000; padding-bottom: 10px; margin-bottom: 40px; font-weight: bold; break-inside: avoid;">
                 <span style="font-size: 1.4em;">${toRoman(sectionCount)}. ${type} Questions</span>
                 <span style="font-size: 1.3em;">[${qs.length} &times; ${qs[0].marks} = ${sectionTotal} Marks]</span>
             </div>
@@ -163,5 +163,5 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         });
     });
 
-    return `<div id="paper-root" style="font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%; box-sizing: border-box;">${contentHtml}</div>`;
+    return `<div id="paper-root" style="font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%;">${contentHtml}</div>`;
 };
