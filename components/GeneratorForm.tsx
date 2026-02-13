@@ -78,6 +78,27 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleTrySample = () => {
+    setFormData({
+        schoolName: "Imperial Heights Global School",
+        className: "7th Grade",
+        subject: "Physics",
+        topics: "Motion, Force, Laws of Motion, Friction",
+        language: "English",
+        timeAllowed: "2 Hours",
+        sourceMaterials: "",
+        sourceMode: "reference",
+        modelQuality: "flash"
+    });
+    setQuestionDistribution([
+        { id: `sample-1`, type: QuestionType.MultipleChoice, count: 10, marks: 1, difficulty: Difficulty.Easy, taxonomy: Taxonomy.Remembering },
+        { id: `sample-2`, type: QuestionType.TrueFalse, count: 5, marks: 1, difficulty: Difficulty.Easy, taxonomy: Taxonomy.Understanding },
+        { id: `sample-3`, type: QuestionType.ShortAnswer, count: 5, marks: 2, difficulty: Difficulty.Medium, taxonomy: Taxonomy.Applying },
+        { id: `sample-4`, type: QuestionType.LongAnswer, count: 2, marks: 5, difficulty: Difficulty.Hard, taxonomy: Taxonomy.Analyzing }
+    ]);
+    setErrors({});
+  };
+
   const handleVoiceConfig = (extracted: any) => {
       setFormData(prev => ({
           ...prev,
@@ -169,33 +190,40 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
   };
 
   return (
-    <div className="max-w-5xl mx-auto animate-fade-in-up">
+    <div className="max-w-5xl mx-auto animate-fade-in-up pb-10">
         <form onSubmit={handleSubmit} noValidate>
             <div className="bg-white dark:bg-slate-800/50 p-6 sm:p-8 rounded-2xl shadow-2xl border dark:border-slate-700/50 space-y-10">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                         <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Generate Exam Paper</h2>
-                        <p className="mt-2 text-slate-600 dark:text-slate-400">Specify requirements or use Voice Builder for speed.</p>
+                        <p className="mt-2 text-slate-600 dark:text-slate-400">Specify requirements or use AI power for any language.</p>
                     </div>
-                    <VoiceConfigurator onConfigExtracted={handleVoiceConfig} />
+                    <div className="flex items-center gap-3">
+                        <button type="button" onClick={handleTrySample} className="px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-bold rounded-full text-sm hover:bg-amber-200 transition-all border border-amber-200 dark:border-amber-800">
+                            Try Sample
+                        </button>
+                        <VoiceConfigurator onConfigExtracted={handleVoiceConfig} />
+                    </div>
                 </div>
 
                 <div className="space-y-6 border-t dark:border-slate-700 pt-8">
                     <div className="flex justify-between items-center">
                         <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">1. Paper Information</h3>
                         <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900 rounded-lg">
-                            <button type="button" onClick={() => setFormData(prev => ({...prev, modelQuality: 'flash'}))} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.modelQuality === 'flash' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Flash (Fast)</button>
-                            <button type="button" onClick={() => setFormData(prev => ({...prev, modelQuality: 'pro'}))} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.modelQuality === 'pro' ? 'bg-purple-600 text-white' : 'text-slate-500'}`}>Pro (Complex)</button>
+                            <button type="button" onClick={() => setFormData(prev => ({...prev, modelQuality: 'flash'}))} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.modelQuality === 'flash' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500'}`}>Flash (Fast)</button>
+                            <button type="button" onClick={() => setFormData(prev => ({...prev, modelQuality: 'pro'}))} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${formData.modelQuality === 'pro' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500'}`}>Pro (Complex)</button>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField name="schoolName" label="School Name" value={formData.schoolName} onChange={handleChange} error={errors.schoolName} />
-                        <FormField name="className" label="Class / Grade" value={formData.className} onChange={handleChange} error={errors.className} />
-                        <FormField name="subject" label="Subject" value={formData.subject} onChange={handleChange} error={errors.subject} />
+                        <FormField name="schoolName" label="School Name" value={formData.schoolName} onChange={handleChange} error={errors.schoolName} placeholder="Enter school/college name" />
+                        <FormField name="className" label="Class / Grade" value={formData.className} onChange={handleChange} error={errors.className} placeholder="e.g. 10th Grade" />
+                        <FormField name="subject" label="Subject" value={formData.subject} onChange={handleChange} error={errors.subject} placeholder="e.g. Mathematics" />
                         <FormField name="timeAllowed" label="Time Allowed" value={formData.timeAllowed} onChange={handleChange} error={errors.timeAllowed} placeholder="e.g., 3 Hours" />
-                        <div className="md:col-span-2"><FormField name="topics" label="Topics" as="textarea" value={formData.topics} onChange={handleChange} error={errors.topics} /></div>
                         <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">Language</label>
+                             <FormField name="topics" label="Topics" as="textarea" value={formData.topics} onChange={handleChange} error={errors.topics} placeholder="List chapters or specific topics..." />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">Language (AI supports 100+ languages)</label>
                             <select name="language" value={formData.language} onChange={handleChange} className="block w-full rounded-lg border-0 py-2.5 px-3 text-gray-900 dark:text-white bg-white dark:bg-slate-900/50 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-slate-700 sm:text-sm">
                                 {LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                             </select>
@@ -208,7 +236,7 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
                     <div className="space-y-3">
                         {questionDistribution.map((dist, index) => (
                              <div key={dist.id} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnter={(e) => handleDragEnter(e, index)} onDragEnd={handleDragEnd} onDragOver={e => e.preventDefault()}
-                                className={`flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border dark:border-slate-700/50 transition-shadow ${draggingIndex === index ? 'opacity-30' : ''}`}
+                                className={`flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border dark:border-slate-700/50 transition-all ${draggingIndex === index ? 'opacity-30 scale-95' : 'hover:border-indigo-400'}`}
                              >
                                 <div className="cursor-move text-slate-400"><DragHandleIcon className="w-5 h-5" /></div>
                                 <div className="flex flex-wrap gap-4 items-end flex-grow">
@@ -218,11 +246,11 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
                                             {QUESTION_TYPES.map(qt => <option key={qt.value} value={qt.value}>{qt.label}</option>)}
                                         </select>
                                     </div>
-                                    <div className="w-16">
+                                    <div className="w-20">
                                         <label className="text-[10px] font-bold uppercase text-slate-400">Qty</label>
                                         <input type="number" min="1" value={dist.count} onChange={(e) => handleDistributionChange(dist.id, 'count', e.target.value)} className="w-full mt-1 p-2 rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-sm" />
                                     </div>
-                                    <div className="w-16">
+                                    <div className="w-20">
                                         <label className="text-[10px] font-bold uppercase text-slate-400">Marks</label>
                                         <input type="number" min="0" step="0.5" value={dist.marks} onChange={(e) => handleDistributionChange(dist.id, 'marks', e.target.value)} className="w-full mt-1 p-2 rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-sm" />
                                     </div>
@@ -250,9 +278,12 @@ const GeneratorForm: React.FC<GeneratorFormProps> = ({ onSubmit, isLoading, user
             </div>
 
              <div className="mt-8 flex flex-col sm:flex-row justify-end items-center gap-6">
-                <div className="text-right"><span className="text-slate-500">Total Marks:</span><span className="ml-2 text-3xl font-black text-slate-900 dark:text-white">{totalMarks}</span></div>
-                <button type="submit" disabled={isLoading} className="w-full sm:w-auto px-10 py-4 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 hover:scale-105 transition-all text-xl disabled:opacity-50">
-                    ✨ {isLoading ? 'Generating...' : 'Generate Exam'}
+                <div className="text-right">
+                    <span className="text-slate-500 font-medium">Total Paper Marks:</span>
+                    <span className="ml-2 text-3xl font-black text-slate-900 dark:text-white">{totalMarks}</span>
+                </div>
+                <button type="submit" disabled={isLoading} className="w-full sm:w-auto px-12 py-4 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all text-xl disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isLoading ? '✨ Generating...' : '✨ Generate Exam'}
                 </button>
             </div>
         </form>
