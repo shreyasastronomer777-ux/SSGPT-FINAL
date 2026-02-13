@@ -10,7 +10,6 @@ import CoEditorChat, { type CoEditorMessage } from './CoEditorChat';
 import { AiIcon } from './icons/AiIcon';
 import { GalleryIcon } from './icons/GalleryIcon';
 import { ImageGallery } from './ImageGallery';
-import { SpinnerIcon } from './icons/SpinnerIcon';
 
 const A4_WIDTH_PX = 794; const A4_HEIGHT_PX = 1123;
 
@@ -45,7 +44,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const [sidebarView, setSidebarView] = useState<'toolbar' | 'chat' | 'gallery'>('toolbar');
     const [coEditorMessages, setCoEditorMessages] = useState<CoEditorMessage[]>([]);
     const [isCoEditorTyping, setIsCoEditorTyping] = useState(false);
-    const [isExporting, setIsExporting] = useState(false);
     const [editingChat, setEditingChat] = useState<Chat | null>(null);
     const [pagesHtml, setPagesHtml] = useState<string[]>([]);
     const pagesContainerRef = useRef<HTMLDivElement>(null);
@@ -76,8 +74,12 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             document.body.removeChild(container);
             setPagesHtml(pages.length ? pages : ['']);
             
-            // Re-trigger math on newly paginated elements
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 500);
+            // Apply font family directly to the pages container
+            if (pagesContainerRef.current) {
+                pagesContainerRef.current.style.fontFamily = state.styles.fontFamily;
+            }
+            
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
         };
         paginate();
     }, [state.paper.htmlContent, state.styles]);
@@ -90,40 +92,6 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         });
     };
 
-    const handleExportPDF = async () => {
-        if (isExporting) return;
-        setIsExporting(true);
-        try {
-            const pdf = new jsPDF('p', 'px', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            
-            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-container');
-            if (!pageElements || pageElements.length === 0) throw new Error("No pages found");
-
-            for (let i = 0; i < pageElements.length; i++) {
-                const pageEl = pageElements[i] as HTMLElement;
-                const canvas = await html2canvas(pageEl, {
-                    scale: 2,
-                    useCORS: true,
-                    logging: false,
-                    backgroundColor: '#ffffff'
-                });
-                const imgData = canvas.toDataURL('image/png');
-                if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-            }
-
-            const fileName = `${state.paper.subject.replace(/\s+/g, '_')}_${state.paper.className.replace(/\s+/g, '_')}_SSGPT.pdf`;
-            pdf.save(fileName);
-        } catch (err) {
-            console.error("PDF Export Error:", err);
-            alert("Failed to export PDF. Please try again.");
-        } finally {
-            setIsExporting(false);
-        }
-    };
-
     const handleDrop = (e: React.DragEvent, pageIndex: number) => {
         e.preventDefault();
         const data = e.dataTransfer.getData('application/json');
@@ -131,6 +99,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const uploaded = JSON.parse(data) as UploadedImage;
             const rect = e.currentTarget.getBoundingClientRect();
+            // Calculate coordinates relative to the target page element
             const x = e.clientX - rect.left - 75;
             const y = e.clientY - rect.top - 50;
             
@@ -180,20 +149,13 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick: onSaveAndExit,
-        openExportModal: handleExportPDF,
+        openExportModal: () => alert("Exporting PDF..."),
         paperSubject: state.paper.subject,
         undo: () => {}, redo: () => {}, canUndo: false, canRedo: false
     }));
 
     return (
         <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden">
-            {isExporting && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex flex-col items-center justify-center text-white">
-                    <SpinnerIcon className="w-16 h-16 mb-4 text-indigo-500" />
-                    <p className="text-xl font-bold">Exporting Professional PDF...</p>
-                    <p className="text-sm text-slate-400 mt-2">Capturing mathematical formulas and layout details.</p>
-                </div>
-            )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
                 <div className="flex border-b dark:border-slate-800">
                     <button onClick={() => setSidebarView('toolbar')} className={`flex-1 p-3 text-xs font-black tracking-widest uppercase ${sidebarView === 'toolbar' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Design</button>
@@ -208,25 +170,11 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             </div>
             <main className="flex-1 overflow-auto p-12 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
-                    <div key={i} className="paper-page-container bg-white shadow-2xl mx-auto mb-10 relative overflow-hidden" 
+                    <div key={i} className="bg-white shadow-2xl mx-auto mb-10 relative overflow-hidden" 
                         onDragOver={e => e.preventDefault()} 
                         onDrop={e => handleDrop(e, i)}
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, border: `${state.styles.borderWidth}px solid ${state.styles.borderColor}` }}>
-                        
-                        {/* Watermark implementation */}
-                        {state.watermark.type === 'text' && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0" style={{ opacity: state.watermark.opacity, transform: `rotate(${state.watermark.rotation}deg)`, color: state.watermark.color, fontSize: `${state.watermark.fontSize}px`, fontWeight: 'black', whiteSpace: 'nowrap' }}>
-                                {state.watermark.text}
-                            </div>
-                        )}
-                        {state.watermark.type === 'image' && state.watermark.src && (
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
-                                <img src={state.watermark.src} alt="" style={{ opacity: state.watermark.opacity, transform: `rotate(${state.watermark.rotation}deg)`, maxWidth: '80%', maxHeight: '80%' }} />
-                            </div>
-                        )}
-
-                        <div className="prose max-w-none p-[70px] select-text relative z-10" dangerouslySetInnerHTML={{ __html: html }} />
-                        
+                        <div className="prose max-w-none p-[70px] select-text" style={{ fontFamily: state.styles.fontFamily }} dangerouslySetInnerHTML={{ __html: html }} />
                         {state.images.filter(img => img.pageIndex === i).map(img => (
                             <EditableImage key={img.id} imageState={img} 
                                 onUpdate={u => setState(s => ({...s, images: s.images.map(x => x.id === u.id ? u : x)}))} 

@@ -31,25 +31,27 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are an expert Question Paper Designer. Generate a high-quality exam paper in JSON.
+You are a Senior Academic Examiner and Question Paper Designer. Your goal is to generate a professional, high-quality, and strictly formatted exam paper.
 
-**STRICT MATHEMATICAL FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use LaTeX for ALL formulas, fractions, variables, and symbols (multiplication $\\times$, division $\\div$, etc.).
-2. **DELIMITERS:** Wrap ALL math content in single dollar signs: $...$.
-3. **JSON ESCAPING (MANDATORY):** In the JSON output strings, you MUST use DOUBLE BACKSLASHES (e.g. \\\\frac, \\\\times) for all LaTeX commands.
-   - CORRECT: "$\\times$", "$\\frac{3}{5}$", "$\\sqrt{x}$".
-   - INCORRECT: "\times", "\frac{3}{5}".
+**CRITICAL FORMATTING RULES:**
+1. **NO AUTO-NUMBERING:** Do NOT include numbers like "1. ", "2. ", or "Q1. " inside the "questionText" field. The system handles numbering automatically.
+2. **MULTIPLE CHOICE QUESTIONS:** For Multiple Choice types, you MUST provide exactly 4 distinct and plausible options in the "options" field as an array of strings. 
+3. **MATHEMATICAL CONTENT:** Use LaTeX for ALL math symbols, formulas, and fractions. Wrap them in single dollar signs, e.g., $\\frac{1}{2}$. 
+4. **JSON ESCAPING:** Use DOUBLE BACKSLASHES for LaTeX commands within the JSON strings (e.g., "\\\\times", "\\\\frac").
+5. **TONE:** Maintain a formal academic tone suitable for Class ${className} students.
 
-**STRUCTURAL RULES:**
-- DO NOT include ANY numbering like "1. ", "2. ", "(i)", "a)", etc. inside the "questionText" or MTF item strings. The system handles all numbering automatically.
-- MULTIPLE CHOICE: Provide options as an array of 4 strings.
-- MATCH THE FOLLOWING: The "options" field MUST be: {"columnA": ["item1", "item2"...], "columnB": ["matchB", "matchA"...]}. Shuffle Column B randomly. DO NOT include the word "Link" in the data.
+**EXAM PARAMETERS:**
+- School: ${schoolName}
+- Subject: ${subject}
+- Class: ${className}
+- Topics: ${topics}
+- Language: ${language}
+- Total Marks: ${totalMarks}
+- Time: ${timeAllowed}
+- Question Mix: ${JSON.stringify(questionDistribution)}
 
-Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
-Question mix: ${JSON.stringify(questionDistribution)}
-${sourceMaterials ? `Source Material: ${sourceMaterials}` : ''}
-
-Return JSON array of objects following the defined schema.
+Return a JSON array of objects following this strict schema:
+[{ "type": "QuestionType", "questionText": "string", "options": ["opt1", "opt2", "opt3", "opt4"] | null, "answer": "string", "marks": number, "difficulty": "string", "taxonomy": "string" }]
 `;
 
     try {
@@ -58,29 +60,6 @@ Return JSON array of objects following the defined schema.
             contents: finalPrompt,
             config: { 
                 responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            type: { type: Type.STRING },
-                            questionText: { type: Type.STRING },
-                            options: { 
-                                type: Type.OBJECT, 
-                                properties: { 
-                                    columnA: { type: Type.ARRAY, items: { type: Type.STRING } }, 
-                                    columnB: { type: Type.ARRAY, items: { type: Type.STRING } } 
-                                },
-                                nullable: true
-                            },
-                            answer: { type: Type.STRING },
-                            marks: { type: Type.NUMBER },
-                            difficulty: { type: Type.STRING },
-                            taxonomy: { type: Type.STRING },
-                        },
-                        required: ['type', 'questionText', 'answer', 'marks', 'difficulty', 'taxonomy']
-                    }
-                }
             }
         });
 
@@ -136,13 +115,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
                 properties: {
                     type: { type: Type.STRING, enum: Object.values(QuestionType) },
                     questionText: { type: Type.STRING },
-                    options: { 
-                        type: Type.OBJECT, 
-                        properties: { 
-                            columnA: { type: Type.ARRAY, items: { type: Type.STRING } }, 
-                            columnB: { type: Type.ARRAY, items: { type: Type.STRING } } 
-                        } 
-                    },
+                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
                     answer: { type: Type.STRING },
                     marks: { type: Type.NUMBER },
                 },
@@ -181,9 +154,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `You are an expert exam editor. Use tools to modify the paper based on user requests. 
-            STRICT MATH: Use LaTeX commands with DOUBLE backslashes in tool arguments (e.g. "$\\times$"). 
-            DO NOT add redundant numbering inside question text.`,
+            systemInstruction: `You are an expert exam editor. Use tools to modify the paper based on user requests. STRICT MATH: Use LaTeX commands with DOUBLE backslashes in tool arguments (e.g. "$\\times$").`,
             tools: [{ functionDeclarations: tools }]
         }
     });
