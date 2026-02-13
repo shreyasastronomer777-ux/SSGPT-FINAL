@@ -15,13 +15,19 @@ const A4_WIDTH_PX = 794; const A4_HEIGHT_PX = 1123;
 
 const triggerMathRendering = (element: HTMLElement | null) => {
     if (!element || !(window as any).renderMathInElement) return;
-    (window as any).renderMathInElement(element, { 
-        delimiters: [
-            {left: '$$', right: '$$', display: true},
-            {left: '$', right: '$', display: false}
-        ], 
-        throwOnError: false 
-    });
+    try {
+        (window as any).renderMathInElement(element, { 
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ], 
+            throwOnError: false 
+        });
+    } catch (err) {
+        console.error("KaTeX render error:", err);
+    }
 };
 
 const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: QuestionPaperData) => void; onSaveAndExit: () => void; onReady: () => void; }>((props, ref) => {
@@ -44,7 +50,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "I'm your AI Co-Editor. I can add questions, change wording, or delete sections for you. What would you like to do?" }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "I'm your AI Co-Editor. I can add questions, change wording, or delete sections for you. Use LaTeX for math like $5 \\times 4$. What would you like to do?" }]);
         onReady();
     }, []);
 
@@ -67,7 +73,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             if (current) pages.push(current);
             document.body.removeChild(container);
             setPagesHtml(pages.length ? pages : ['']);
-            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 100);
+            
+            // Re-trigger math on newly paginated elements
+            setTimeout(() => triggerMathRendering(pagesContainerRef.current), 200);
         };
         paginate();
     }, [state.paper.htmlContent, state.styles]);
@@ -84,11 +92,29 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         e.preventDefault();
         const data = e.dataTransfer.getData('application/json');
         if (!data) return;
-        const uploaded = JSON.parse(data) as UploadedImage;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX - rect.left - 75;
-        const y = e.clientY - rect.top - 50;
-        setState(s => ({ ...s, images: [...s.images, { id: Date.now().toString(), src: uploaded.url, x, y, width: 150, height: 100, pageIndex, rotation: 0 }] }));
+        try {
+            const uploaded = JSON.parse(data) as UploadedImage;
+            const rect = e.currentTarget.getBoundingClientRect();
+            // Calculate coordinates relative to the target page element
+            const x = e.clientX - rect.left - 75;
+            const y = e.clientY - rect.top - 50;
+            
+            setState(s => ({ 
+                ...s, 
+                images: [...s.images, { 
+                    id: `img-${Date.now()}`, 
+                    src: uploaded.url, 
+                    x: Math.max(0, x), 
+                    y: Math.max(0, y), 
+                    width: 150, 
+                    height: 100, 
+                    pageIndex, 
+                    rotation: 0 
+                }] 
+            }));
+        } catch (err) {
+            console.error("Drop handling failed", err);
+        }
     };
 
     const handleCoEditorSend = async (msg: string) => {
@@ -109,14 +135,17 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                     }
                 });
             }
-            if (res.text) setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated the paper accordingly." }]);
+            if (res.text) {
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated." }]);
+                setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 100);
+            }
         } catch (e) { console.error(e); }
         finally { setIsCoEditorTyping(false); }
     };
 
     useImperativeHandle(ref, () => ({
         handleSaveAndExitClick: onSaveAndExit,
-        openExportModal: () => alert("Generating high-res PDF..."),
+        openExportModal: () => alert("Exporting PDF..."),
         paperSubject: state.paper.subject,
         undo: () => {}, redo: () => {}, canUndo: false, canRedo: false
     }));
@@ -124,7 +153,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     return (
         <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden">
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
-                <div className="flex border-b">
+                <div className="flex border-b dark:border-slate-800">
                     <button onClick={() => setSidebarView('toolbar')} className={`flex-1 p-3 text-xs font-black tracking-widest uppercase ${sidebarView === 'toolbar' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>Design</button>
                     <button onClick={() => setSidebarView('chat')} className={`flex-1 p-3 text-xs font-black tracking-widest uppercase ${sidebarView === 'chat' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><AiIcon className="w-4 h-4 mx-auto"/></button>
                     <button onClick={() => setSidebarView('gallery')} className={`flex-1 p-3 text-xs font-black tracking-widest uppercase ${sidebarView === 'gallery' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><GalleryIcon className="w-4 h-4 mx-auto"/></button>

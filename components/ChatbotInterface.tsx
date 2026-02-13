@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
@@ -16,7 +15,8 @@ const SendIcon = (props: any) => ( <svg xmlns="http://www.w3.org/2000/svg" width
 
 const systemInstruction = `You are SSGPT. Help educators create exams. 
 STRICT MATH: For any mathematical content, symbols (like multiply/divide), or formulas, you MUST use LaTeX wrapped in $ delimiters. 
-Example: "Calculate $5 \\times 4$" or "Solve for $x$". 
+Example: "Calculate $5 \\times 4$". 
+ALWAYS use double backslashes for commands in your thoughts. 
 NEVER use plain text math. Call 'generatePaper' when all details are ready.`;
 
 const generatePaperTool: FunctionDeclaration = { 
@@ -37,15 +37,19 @@ const MessageBubble = memo(({ message }: { message: Message }) => {
     const bubbleRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (bubbleRef.current && (window as any).renderMathInElement) {
-            (window as any).renderMathInElement(bubbleRef.current, { 
-                delimiters: [
-                    {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false},
-                    {left: '\\(', right: '\\)', display: false},
-                    {left: '\\[', right: '\\]', display: true}
-                ], 
-                throwOnError: false 
-            });
+            try {
+                (window as any).renderMathInElement(bubbleRef.current, { 
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\(', right: '\\)', display: false},
+                        {left: '\\[', right: '\\]', display: true}
+                    ], 
+                    throwOnError: false 
+                });
+            } catch (err) {
+                console.warn("Math rendering failed in bubble", err);
+            }
         }
     }, [message.text]);
 
