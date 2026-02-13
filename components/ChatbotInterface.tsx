@@ -13,12 +13,7 @@ import { SSGPT_LOGO_URL } from '../constants';
 type Message = { id: string; sender: 'bot' | 'user'; text: string; grounding?: any[] };
 const SendIcon = (props: any) => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" {...props}><path d="M3.4 20.4l17.45-7.48c.81-.35.81-1.49 0-1.84L3.4 3.6c-.66-.29-1.39.2-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"></path></svg>);
 
-const systemInstruction = `You are SSGPT. Help educators create exams. 
-STRICT MATH: For any mathematical content, symbols (like multiply/divide), or formulas, you MUST use LaTeX wrapped in $ delimiters. 
-Example: "Calculate $5 \\times 4$". 
-ALWAYS use double backslashes for commands in your thoughts. 
-NEVER use plain text math. Call 'generatePaper' when all details are ready.`;
-
+const systemInstruction = "You are SSGPT. Help educators create exams. Gather: School, Class, Subject, Topics, Time, Language, and Distribution. ALWAYS use LaTeX $...$ for math. Call 'generatePaper' when all details are ready.";
 const generatePaperTool: FunctionDeclaration = { 
   name: 'generatePaper', 
   description: 'Generate paper once all details are gathered.', 
@@ -34,29 +29,16 @@ const generatePaperTool: FunctionDeclaration = {
 };
 
 const MessageBubble = memo(({ message }: { message: Message }) => {
-    const bubbleRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
-        if (bubbleRef.current && (window as any).renderMathInElement) {
-            try {
-                (window as any).renderMathInElement(bubbleRef.current, { 
-                    delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false},
-                        {left: '\\(', right: '\\)', display: false},
-                        {left: '\\[', right: '\\]', display: true}
-                    ], 
-                    throwOnError: false 
-                });
-            } catch (err) {
-                console.warn("Math rendering failed in bubble", err);
-            }
+        if ((window as any).renderMathInElement) {
+            (window as any).renderMathInElement(document.body, { delimiters: [{left: '$', right: '$', display: false}], throwOnError: false });
         }
     }, [message.text]);
 
     return (
         <div className={`flex items-start gap-3 w-full ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
             {message.sender === 'bot' && <img src={SSGPT_LOGO_URL} alt="AI" className="w-8 h-8 rounded-full flex-shrink-0" />}
-            <div ref={bubbleRef} className={`px-4 py-3 rounded-2xl max-w-xl shadow-md border ${message.sender === 'bot' ? 'bg-white dark:bg-slate-800' : 'bg-green-100 dark:bg-green-900/40 text-slate-800 dark:text-slate-200'}`}>
+            <div className={`px-4 py-3 rounded-2xl max-w-xl shadow-md border ${message.sender === 'bot' ? 'bg-white dark:bg-slate-800' : 'bg-green-100 dark:bg-green-900/40 text-slate-800 dark:text-slate-200'}`}>
                 <div className="prose-chat text-sm" dangerouslySetInnerHTML={{ __html: message.text.replace(/\n/g, '<br/>') }} />
             </div>
         </div>
