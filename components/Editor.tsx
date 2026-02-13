@@ -52,7 +52,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your paper. Use LaTeX like $5 \\times 4$ for math. I've been optimized for Match the Following and crisp PDF exports." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your paper. Use LaTeX like $5 \\times 4$ for math. I've been optimized for multi-language support and crisp PDF exports." }]);
         onReady();
     }, []);
 
@@ -67,12 +67,14 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             container.innerHTML = state.paper.htmlContent;
             document.body.appendChild(container);
             
-            const contentRoot = container.children[0];
+            // Try to find the root div created by htmlGenerator
+            const contentRoot = container.querySelector('#paper-root') || container.children[0];
             const children = Array.from(contentRoot?.children || []);
+            
             const pages: string[] = [];
             let current = ""; 
             let h = 0;
-            const maxH = A4_HEIGHT_PX - 130; // Slightly more margin for safety
+            const maxH = A4_HEIGHT_PX - 130; 
 
             children.forEach(child => {
                 const el = child as HTMLElement;
@@ -86,7 +88,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             });
             if (current) pages.push(current);
             document.body.removeChild(container);
-            setPagesHtml(pages.length ? pages : ['']);
+            setPagesHtml(pages.length ? pages : ['<p>No content generated. Please try again with different parameters.</p>']);
             
             setTimeout(() => triggerMath(pagesContainerRef.current), 100);
         };
@@ -112,25 +114,21 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 triggerMath(el);
                 
                 const canvas = await html2canvas(el, { 
-                    scale: 2, // 2 is optimal for performance vs quality
+                    scale: 2.5, 
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
-                    allowTaint: true,
-                    onclone: (clonedDoc) => {
-                        const clonedEl = clonedDoc.querySelector(`.paper-page-content[data-page-index="${i}"]`);
-                        if (clonedEl) (clonedEl as HTMLElement).style.visibility = 'visible';
-                    }
+                    allowTaint: true
                 });
                 
                 const imgData = canvas.toDataURL('image/png');
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW'); // SLOW for better quality compression
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
             }
-            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Final_Exam.pdf`);
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Exam_Paper.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Export failed. Ensure images are from trusted sources.");
+            alert("Export failed. Please check if your topics contain special characters that might be breaking the renderer.");
         } finally {
             setIsExporting(false);
         }

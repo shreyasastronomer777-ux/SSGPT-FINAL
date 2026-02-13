@@ -11,18 +11,16 @@ const escapeHtml = (unsafe: string | undefined): string => {
 }
 
 const stripNumbering = (text: string): string => {
-    // Aggressive but safe removal of AI-generated prefixes. 
-    // Uses lookbehind if possible, but safe regex for compatibility.
+    // Aggressive but safe removal of AI-generated prefixes across different character sets.
     return text.trim()
-        .replace(/^(\s*(\(?[a-zA-Z0-9]{1,3}[\.\)]\s*))+/, '')
-        .replace(/^[Qq]\d+[\.:\)]\s*/, '')
-        .replace(/^Column\s+[AB][\.:\s]*/i, '')
+        .replace(/^(\s*(\(?[a-zA-Z0-9]{1,3}[\.\)]\s*))+/, '') // (1), 1., i), etc.
+        .replace(/^[Qq]\d+[\.:\)]\s*/, '') // Q1., Q1:
+        .replace(/^Column\s+[AB][\.:\s]*/i, '') // Column A:
         .replace(/\\n/g, ' ')
         .trim();
 };
 
 const formatText = (text: string = ''): string => {
-    // Preserve Unicode characters (languages like Kannada, Hindi etc.)
     return stripNumbering(text).replace(/\n/g, '<br/>');
 };
 
@@ -102,62 +100,19 @@ const renderOptions = (question: Question): string => {
 
 const renderQuestion = (question: Question): string => {
     const optionsHtml = renderOptions(question);
-    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 2.5rem;">
+    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 2.5rem; width: 100%;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
-                        <td style="vertical-align: top; width: 45px; font-weight: bold; font-size: 1.2em; color: #1e293b;">${question.questionNumber}.</td>
+                        <td style="vertical-align: top; width: 45px; font-weight: bold; font-size: 1.2em; color: #000;">${question.questionNumber}.</td>
                         <td style="vertical-align: top; text-align: left; line-height: 1.6; font-size: 1.2em; color: #000;">${formatText(question.questionText)}</td>
-                        <td style="vertical-align: top; text-align: right; width: 80px; font-weight: bold; font-size: 1.15em; color: #475569;">[${question.marks}]</td>
+                        <td style="vertical-align: top; text-align: right; width: 80px; font-weight: bold; font-size: 1.15em; color: #000;">[${question.marks}]</td>
                     </tr>
                 </tbody>
             </table>
             ${optionsHtml ? `<div style="padding-left: 45px;">${optionsHtml}</div>` : ''}
         </div>`;
 };
-
-const generateHeaderHtml = (paperData: QuestionPaperData, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' } }) => {
-    const logoSrc = options?.logoConfig?.src;
-    const logoAlignment = options?.logoConfig?.alignment ?? 'center';
-    let headerContentHtml = '';
-    const logoImgTag = logoSrc ? `<img src="${logoSrc}" alt="Logo" style="max-height: 100px; margin-bottom: 15px; display: inline-block; object-fit: contain;" />` : '';
-    
-    const schoolDetails = `
-        <h2 style="margin: 0; font-size: 32px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.75px; color: #0f172a;">${escapeHtml(paperData.schoolName)}</h2>
-        <h3 style="margin: 8px 0; font-size: 24px; text-decoration: underline; font-weight: bold; color: #1e293b;">${escapeHtml(paperData.subject)}</h3>
-        <p style="margin: 4px 0; font-weight: 600; font-size: 1.4em; color: #475569;">Class: ${escapeHtml(paperData.className)}</p>
-    `;
-
-    if (logoSrc && (logoAlignment === 'left' || logoAlignment === 'right')) {
-        if (logoAlignment === 'left') {
-            headerContentHtml = `<div style="display: flex; justify-content: space-between; align-items: center; gap: 30px;">
-                <div style="flex: 0 0 auto;">${logoImgTag}</div>
-                <div style="flex: 1; text-align: center;">${schoolDetails}</div>
-                <div style="flex: 0 0 auto; width: 100px;"></div>
-            </div>`;
-        } else {
-             headerContentHtml = `<div style="display: flex; justify-content: space-between; align-items: center; gap: 30px;">
-                <div style="flex: 0 0 auto; width: 100px;"></div>
-                <div style="flex: 1; text-align: center;">${schoolDetails}</div>
-                <div style="flex: 0 0 auto;">${logoImgTag}</div>
-            </div>`;
-        }
-    } else {
-        headerContentHtml = `<div style="text-align: center;">${logoAlignment === 'center' ? logoImgTag : ''}${schoolDetails}</div>`;
-    }
-
-    return `<div style="break-inside: avoid; page-break-inside: avoid;">
-            ${headerContentHtml}
-            <hr style="border: 0; border-top: 4px solid #000; margin-top: 20px;">
-            <table style="width: 100%; margin: 12px 0; font-weight: bold; font-size: 1.3em;">
-                <tr>
-                    <td style="text-align: left; color: #000;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
-                    <td style="text-align: right; color: #000;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
-                </tr>
-            </table>
-            <hr style="border: 0; border-top: 3px solid #000; margin-bottom: 35px;">
-        </div>`;
-}
 
 export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?: { logoConfig?: { src?: string; alignment: 'left' | 'center' | 'right' } }): string => {
     const sectionOrder = [
@@ -171,22 +126,50 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let questionCounter = 0;
     let sectionCount = 0;
 
-    const sections = sectionOrder.map(type => {
+    // Use a flat structure within the root div to make paginator more reliable
+    let contentHtml = '';
+
+    // Render Header
+    const logoSrc = options?.logoConfig?.src;
+    const logoAlignment = options?.logoConfig?.alignment ?? 'center';
+    const logoImgTag = logoSrc ? `<img src="${logoSrc}" alt="Logo" style="max-height: 90px; margin-bottom: 15px; display: inline-block;" />` : '';
+    
+    contentHtml += `
+        <div style="text-align: center; width: 100%; margin-bottom: 20px; break-inside: avoid;">
+            ${logoAlignment === 'center' ? logoImgTag : ''}
+            <h2 style="margin: 0; font-size: 32px; font-weight: 900; text-transform: uppercase;">${escapeHtml(paperData.schoolName)}</h2>
+            <h3 style="margin: 8px 0; font-size: 24px; text-decoration: underline; font-weight: bold;">${escapeHtml(paperData.subject)}</h3>
+            <p style="margin: 4px 0; font-weight: 600; font-size: 1.4em;">Class: ${escapeHtml(paperData.className)}</p>
+            <hr style="border: 0; border-top: 4px solid #000; margin-top: 20px;">
+            <table style="width: 100%; margin: 12px 0; font-weight: bold; font-size: 1.3em;">
+                <tr>
+                    <td style="text-align: left;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
+                    <td style="text-align: right;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
+                </tr>
+            </table>
+            <hr style="border: 0; border-top: 3px solid #000; margin-bottom: 35px;">
+        </div>
+    `;
+
+    sectionOrder.forEach(type => {
         const qs = paperData.questions.filter(q => q.type === type);
-        if (qs.length === 0) return '';
+        if (qs.length === 0) return;
         sectionCount++;
         const sectionTotal = qs.reduce((acc, q) => acc + q.marks, 0);
         
-        return `
-            <div style="text-align: center; margin: 50px 0 20px; font-weight: 900; text-transform: uppercase; text-decoration: underline; font-size: 1.5em; color: #000;">Section ${String.fromCharCode(64 + sectionCount)}</div>
-            <div style="display: flex; justify-content: space-between; border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 32px; font-weight: bold;">
+        contentHtml += `
+            <div style="text-align: center; margin: 50px 0 20px; font-weight: 900; text-transform: uppercase; text-decoration: underline; font-size: 1.5em; break-inside: avoid;">Section ${String.fromCharCode(64 + sectionCount)}</div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 32px; font-weight: bold; break-inside: avoid;">
                 <span style="font-size: 1.35em;">${toRoman(sectionCount)}. ${type} Questions</span>
                 <span style="font-size: 1.25em;">[${qs.length} &times; ${qs[0].marks} = ${sectionTotal} Marks]</span>
             </div>
-            ${qs.map(q => { questionCounter++; return renderQuestion({ ...q, questionNumber: questionCounter }); }).join('')}
         `;
-    }).join('');
 
-    const headerHtml = generateHeaderHtml(paperData, options);
-    return `<div style="font-family: 'Inter', 'Times New Roman', serif; color: #000; background: #fff;">${headerHtml}${sections}</div>`;
+        qs.forEach(q => {
+            questionCounter++;
+            contentHtml += renderQuestion({ ...q, questionNumber: questionCounter });
+        });
+    });
+
+    return `<div id="paper-root" style="font-family: 'Inter', 'Times New Roman', serif; color: #000; background: #fff; width: 100%;">${contentHtml}</div>`;
 };

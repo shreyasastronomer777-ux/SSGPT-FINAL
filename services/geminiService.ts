@@ -5,7 +5,10 @@ export { generateHtmlFromPaperData };
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    throw new Error("Internal AI Error: Failed to generate paper content. Please try again with a different model or adjusted parameters.");
+    if (error?.message?.includes("Safety")) {
+        throw new Error("The content was flagged by safety filters. Please try rephrasing your topics or materials.");
+    }
+    throw new Error(`AI Generation Failed (${context}). Please try again.`);
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
@@ -32,29 +35,25 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are a Senior Academic Examiner. Your task is to generate a professional examination paper in JSON format.
+You are a Senior Academic Examiner. Generate a high-quality examination paper in JSON format.
 
-**LANGUAGE SUPPORT (CRITICAL):**
-- Generate the ENTIRE content (questions, options, and answers) in the requested language: **${language}**.
-- If the language is not English, ensure all characters are properly UTF-8 encoded.
+**LANGUAGE (TOP PRIORITY):**
+- You MUST generate ALL text (questions, options, instructions) in **${language}**.
+- Use correct academic terminology for the requested language.
 
-**STRICT MATHEMATICAL FORMATTING (CRITICAL):**
-1. **LATEX FOR ALL MATH:** Use LaTeX for ALL math formulas, symbols ($\times$, $\div$, etc.), variables ($x$), and units ($m/s$).
-2. **REGIONAL TEXT IN MATH:** If using regional language text inside a math formula, use \text{...}, e.g., $\rho = \frac{\text{ದ್ರವ್ಯರಾಶಿ}}{\text{ಗಾತ್ರ}}$.
-3. **JSON ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g. \\\\times, \\\\frac{a}{b}) for all LaTeX commands in the JSON strings.
+**MATHEMATICAL FORMATTING:**
+1. **LATEX:** Use LaTeX for ALL math formulas, variables ($x$), and symbols ($5 \\times 4$).
+2. **ESCAPING:** You MUST use DOUBLE BACKSLASHES (e.g. \\\\frac, \\\\times) in the JSON strings.
 
 **STRUCTURAL RULES:**
-- **NO NUMBERING:** DO NOT include ANY numbering prefixes like "1. ", "Q1. ", "(i)", "a)", "Column A:" in the strings.
-- **NON-EMPTY TEXT:** "questionText" must NEVER be empty. If the question is purely a formula, put the formula in "questionText".
-- **MATCH THE FOLLOWING:** Options MUST be {"columnA": [...], "columnB": [...]}. Shuffle Column B.
+- **NO PREFIXES:** Do NOT include numbering like "1. ", "a)", or labels like "Column A:".
+- **MCQ OPTIONS:** Provide exactly 4 options as an array of strings.
+- **MATCH THE FOLLOWING:** Options MUST be an object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Correct Match 2", "Correct Match 1"...]}.
+- **VALIDITY:** Ensure every question object is complete and fits the grade level.
 
 **EXAM PARAMETERS:**
-Subject: ${subject}
-Grade: ${className}
-Topics: ${topics}
-Marks: ${totalMarks}
-Time: ${timeAllowed}
-Mix: ${JSON.stringify(questionDistribution)}
+Subject: ${subject} | Grade: ${className} | Topics: ${topics} | Marks: ${totalMarks} | Time: ${timeAllowed}
+Question Mix: ${JSON.stringify(questionDistribution)}
 ${sourceMaterials ? `Reference Content: ${sourceMaterials}` : ''}
 
 Return only a valid JSON array of question objects.
@@ -71,17 +70,14 @@ Return only a valid JSON array of question objects.
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            type: { type: Type.STRING },
+                            type: { type: Type.STRING, description: "One of: Multiple Choice, Fill in the Blanks, True / False, Short Answer, Long Answer, Match the Following" },
                             questionText: { type: Type.STRING },
                             options: { 
-                                type: Type.OBJECT,
-                                properties: {
-                                    columnA: { type: Type.ARRAY, items: { type: Type.STRING } },
-                                    columnB: { type: Type.ARRAY, items: { type: Type.STRING } }
-                                }
+                                type: Type.NULL, // We let the model handle the dynamic shape in JSON, but prompt it heavily.
+                                description: "Array of strings for MCQ, or {columnA:[], columnB:[]} for Matching. Null for others."
                             },
-                            answer: { type: Type.STRING },
-                            marks: { type: Type.INTEGER },
+                            answer: { type: Type.STRING, description: "The correct answer or solution." },
+                            marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
                             taxonomy: { type: Type.STRING }
                         },
@@ -91,28 +87,21 @@ Return only a valid JSON array of question objects.
             }
         });
 
-        const jsonText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const text = response.text || "[]";
+        // Clean markdown artifacts if they exist
+        const jsonText = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const generatedQuestionsRaw = JSON.parse(jsonText) as any[];
         
-        if (!generatedQuestionsRaw || generatedQuestionsRaw.length === 0) {
-            throw new Error("AI returned an empty question list.");
+        if (!Array.isArray(generatedQuestionsRaw) || generatedQuestionsRaw.length === 0) {
+            throw new Error("AI returned an invalid or empty paper structure.");
         }
 
-        const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => {
-            let options = q.options;
-            // Handle Multiple Choice coming as array or object
-            if (q.type === QuestionType.MultipleChoice && q.options && !Array.isArray(q.options)) {
-                // If the model incorrectly used {columnA: [...]} for MCQ
-                options = q.options.columnA || q.options.items || Object.values(q.options);
-            }
-            
-            return {
-                ...q,
-                options: options || null,
-                answer: q.answer || '',
-                questionNumber: index + 1
-            };
-        });
+        const processedQuestions: Question[] = generatedQuestionsRaw.map((q, index) => ({
+            ...q,
+            options: q.options || null,
+            answer: q.answer || '',
+            questionNumber: index + 1
+        }));
 
         const paperId = `paper-${Date.now()}`;
         const structuredPaperData: QuestionPaperData = {
@@ -120,7 +109,10 @@ Return only a valid JSON array of question objects.
             timeAllowed, questions: processedQuestions, htmlContent: '', createdAt: new Date().toISOString(),
         };
         
-        return { ...structuredPaperData, htmlContent: generateHtmlFromPaperData(structuredPaperData) };
+        // Ensure HTML is generated before returning
+        structuredPaperData.htmlContent = generateHtmlFromPaperData(structuredPaperData);
+        
+        return structuredPaperData;
     } catch (error) {
         handleApiError(error, "generateQuestionPaper");
         throw error;
@@ -152,10 +144,10 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `You are an expert exam editor. Modify the JSON structure. 
-            STRICT MATH: Always use LaTeX with double backslashes like "$\\\\times$". 
-            MTF: options must be {columnA: [], columnB: []}. 
-            ALWAYS preserve the requested language.`
+            systemInstruction: `You are an expert exam editor. Modify the paper based on user instructions. 
+            STRICT MATH: Use LaTeX with double backslashes. 
+            MATCH THE FOLLOWING: Ensure options are {columnA: [], columnB: []}. 
+            LANGUAGE: Always use the language originally used in the paper.`
         }
     });
 };
