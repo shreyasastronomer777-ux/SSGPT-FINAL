@@ -5,122 +5,67 @@ import { StopIcon } from './icons/StopIcon';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { extractConfigFromTranscript } from '../services/geminiService';
 
-interface VoiceConfiguratorProps {
-    onConfigExtracted: (config: any) => void;
-}
-
-export const VoiceConfigurator: React.FC<VoiceConfiguratorProps> = ({ onConfigExtracted }) => {
+export const VoiceConfigurator: React.FC<{ onConfigExtracted: (config: any) => void }> = ({ onConfigExtracted }) => {
     const [isActive, setIsActive] = useState(false);
     const [isExtracting, setIsExtracting] = useState(false);
     const [transcript, setTranscript] = useState('');
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
-    const streamRef = useRef<MediaStream | null>(null);
 
     const startSession = async () => {
-        setIsActive(true);
-        setTranscript('');
-        
+        setIsActive(true); setTranscript('');
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            streamRef.current = stream;
-
-            if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+            const inputAudioContext = new AudioContext({ sampleRate: 16000 });
             
             sessionPromiseRef.current = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-12-2025',
                 callbacks: {
                     onopen: () => {
                         const source = inputAudioContext.createMediaStreamSource(stream);
-                        const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
-                        scriptProcessor.onaudioprocess = (e) => {
-                            const inputData = e.inputBuffer.getChannelData(0);
-                            const pcmBlob = createBlob(inputData);
-                            sessionPromiseRef.current?.then(session => {
-                                session.sendRealtimeInput({ media: pcmBlob });
-                            });
+                        const processor = inputAudioContext.createScriptProcessor(4096, 1, 1);
+                        processor.onaudioprocess = (e) => {
+                            const pcmBlob = createBlob(e.inputBuffer.getChannelData(0));
+                            sessionPromiseRef.current?.then(s => s.sendRealtimeInput({ media: pcmBlob }));
                         };
-                        source.connect(scriptProcessor);
-                        scriptProcessor.connect(inputAudioContext.destination);
+                        source.connect(processor); processor.connect(inputAudioContext.destination);
                     },
-                    onmessage: async (message: LiveServerMessage) => {
-                        if (message.serverContent?.inputTranscription) {
-                            setTranscript(prev => prev + ' ' + (message.serverContent?.inputTranscription?.text || ''));
-                        }
+                    onmessage: (m) => {
+                        if (m.serverContent?.inputTranscription) setTranscript(t => t + ' ' + m.serverContent!.inputTranscription!.text);
                     },
-                    onerror: (e) => console.error("Voice Error", e),
-                    onclose: () => {
-                        stream.getTracks().forEach(t => t.stop());
-                        inputAudioContext.close();
-                    }
+                    onerror: (e) => console.error(e),
+                    onclose: () => { stream.getTracks().forEach(t => t.stop()); inputAudioContext.close(); }
                 },
-                config: {
-                    responseModalities: [Modality.AUDIO],
-                    inputAudioTranscription: {},
-                    systemInstruction: "Listen and transcribe the user's exam requirements. Be silent."
-                }
+                config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, systemInstruction: "Transcribe the user requirements accurately." }
             });
-        } catch (err) {
-            console.error(err);
-            setIsActive(false);
-        }
+        } catch (err) { console.error(err); setIsActive(false); }
     };
 
     const stopSession = async () => {
-        sessionPromiseRef.current?.then(s => s.close());
-        setIsActive(false);
-        
+        sessionPromiseRef.current?.then(s => s.close()); setIsActive(false);
         if (transcript.trim()) {
             setIsExtracting(true);
             try {
                 const config = await extractConfigFromTranscript(transcript);
                 if (config) onConfigExtracted(config);
-            } catch (e) {
-                alert("Internal Error Occurred");
-            } finally {
-                setIsExtracting(false);
-            }
+            } catch (e) { alert("Failed to extract configuration."); }
+            finally { setIsExtracting(false); }
         }
     };
 
     const createBlob = (data: Float32Array): Blob => {
-        const l = data.length;
-        const int16 = new Int16Array(l);
-        for (let i = 0; i < l; i++) int16[i] = data[i] * 32768;
-        return {
-            data: encode(new Uint8Array(int16.buffer)),
-            mimeType: 'audio/pcm;rate=16000',
-        };
+        const i16 = new Int16Array(data.length);
+        for (let i = 0; i < data.length; i++) i16[i] = data[i] * 32768;
+        return { data: btoa(Array.from(new Uint8Array(i16.buffer)).map(c => String.fromCharCode(c)).join('')), mimeType: 'audio/pcm;rate=16000' };
     };
-
-    function encode(bytes: Uint8Array) {
-        let binary = '';
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); }
-        return btoa(binary);
-    }
 
     return (
         <div className="relative">
-            <button
-                type="button"
-                onClick={isActive ? stopSession : startSession}
-                disabled={isExtracting}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold transition-all shadow-lg ${isActive ? 'bg-red-500 text-white animate-pulse' : 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 hover:bg-indigo-50'}`}
-            >
+            <button type="button" onClick={isActive ? stopSession : startSession} disabled={isExtracting} className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold transition-all shadow-lg ${isActive ? 'bg-red-500 text-white' : 'bg-white dark:bg-slate-700 text-indigo-600'}`}>
                 {isExtracting ? <SpinnerIcon className="w-5 h-5" /> : isActive ? <StopIcon className="w-5 h-5" /> : <MicIcon className="w-5 h-5" />}
                 {isExtracting ? 'Applying...' : isActive ? 'Listening...' : 'Voice Builder'}
             </button>
-            
-            {isActive && (
-                <div className="absolute top-full left-0 mt-4 p-4 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border dark:border-slate-700 w-64 z-50 animate-fade-in">
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Live Transcript</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 italic min-h-[40px]">
-                        {transcript || 'Start speaking...'}
-                    </p>
-                </div>
-            )}
+            {isActive && <div className="absolute top-full left-0 mt-4 p-4 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border w-64 z-50 animate-fade-in text-sm italic">{transcript || 'Start speaking...'}</div>}
         </div>
     );
 };
