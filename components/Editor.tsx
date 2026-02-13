@@ -54,7 +54,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "I've been optimized for board-standard professional exports. Ready to refine your assessment. What would you like to update?" }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Ready to refine your assessment. I've optimized the layout for professional board standards. Use LaTeX for math." }]);
         onReady();
     }, []);
 
@@ -76,6 +76,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         container.innerHTML = htmlContent;
         document.body.appendChild(container);
         
+        // Let Math render for a split second before measuring height
+        triggerMathRendering(container);
+
         const contentRoot = container.querySelector('#paper-root') || container.children[0];
         const children = Array.from(contentRoot?.children || []);
         
@@ -86,13 +89,12 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
         children.forEach(child => {
             const el = child as HTMLElement;
-            // Accurately calculate height including all computed styles
             const style = window.getComputedStyle(el);
             const marginTop = parseFloat(style.marginTop || '0');
             const marginBottom = parseFloat(style.marginBottom || '0');
             const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
             
-            // If this element (like a table) would overflow, move to new page
+            // Elements with break-inside: avoid (like tables) should be pushed to the next page if they overflow
             if (currentHeight + elHeight > maxPageHeight && currentPageHtml) { 
                 pages.push(currentPageHtml); 
                 currentPageHtml = ""; 
@@ -122,7 +124,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
             const pdfH = pdf.internal.pageSize.getHeight();
-            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page-content');
+            
+            // Select .paper-page elements to capture full styles and boundaries
+            const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
             
             if (!pageElements || pageElements.length === 0) {
                 alert("Nothing to export.");
@@ -131,28 +135,33 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
-                // Pre-render math symbols for maximum sharpness
+                
+                // Refresh math before capture
                 triggerMathRendering(el);
                 
+                // Brief pause to allow any async layout settling
+                await new Promise(resolve => setTimeout(resolve, 100));
+
                 const canvas = await html2canvas(el, { 
-                    scale: 3.5, // High resolution for clear, professional print
+                    scale: 2, // 2x scale offers a good balance of crispness and memory efficiency
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
-                    allowTaint: true,
-                    imageTimeout: 0
+                    allowTaint: true
                 });
                 
-                const imgData = canvas.toDataURL('image/png');
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
                 if (i > 0) pdf.addPage();
-                // Map the high-res canvas image back to the A4 page size
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH, undefined, 'SLOW');
+                
+                // Add the high-res image to the PDF page
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
             }
-            const suffix = isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper';
-            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}${suffix}.pdf`);
+            
+            const filename = `${state.paper.subject.replace(/\s+/g, '_')}${isAnswerKeyMode ? '_Answer_Key' : '_Question_Paper'}.pdf`;
+            pdf.save(filename);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Sorry, there was an error exporting the PDF. Memory may be low.");
+            alert("Sorry, there was an error exporting the PDF. If the paper is very long, try exporting in batches.");
         } finally {
             setIsExporting(false);
         }

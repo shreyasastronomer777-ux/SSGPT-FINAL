@@ -30,7 +30,7 @@ const renderOptions = (question: Question): string => {
     if (question.type === QuestionType.MultipleChoice && Array.isArray(question.options)) {
         const options = question.options as string[];
         if (options.length >= 4) {
-            return `<table style="width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; font-family: inherit;"><tbody>
+            return `<table style="width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; font-family: inherit; break-inside: avoid;"><tbody>
                     <tr>
                         <td style="width: 50%; vertical-align: top; padding: 6px 10px 6px 0; font-size: 1.1em;">(a) ${formatText(options[0])}</td>
                         <td style="width: 50%; vertical-align: top; padding: 6px 0 6px 10px; font-size: 1.1em;">(b) ${formatText(options[1])}</td>
@@ -41,7 +41,7 @@ const renderOptions = (question: Question): string => {
                     </tr>
                 </tbody></table>`;
         }
-        return `<div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 1.1em;">
+        return `<div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 1.1em; break-inside: avoid;">
             ${options.map((opt, i) => `<div style="break-inside: avoid;">(${String.fromCharCode(97 + i)}) ${formatText(opt)}</div>`).join('')}
         </div>`;
     } else if (question.type === QuestionType.MatchTheFollowing) {
@@ -69,7 +69,7 @@ const renderOptions = (question: Question): string => {
         `).join('');
 
         return `
-            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; border: 2px solid #000; background-color: #fff; break-inside: avoid;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; border: 2px solid #000; background-color: #fff; break-inside: avoid; page-break-inside: avoid;">
                 <thead>
                     <tr style="text-align: left; background-color: #f8fafc; border-bottom: 2px solid #000;">
                         <th style="padding: 12px; border: 2px solid #000; width: 50%; font-weight: 800; text-transform: uppercase; font-size: 0.9em; letter-spacing: 0.5px;">Column A</th>
@@ -84,15 +84,25 @@ const renderOptions = (question: Question): string => {
 
 const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
     const optionsHtml = renderOptions(question);
+    
+    let answerText = '';
+    if (typeof question.answer === 'object' && question.answer !== null) {
+        answerText = Object.entries(question.answer)
+            .map(([key, value]) => `${key} → ${value}`)
+            .join(', ');
+    } else {
+        answerText = String(question.answer || '');
+    }
+
     const answerHtml = isAnswerKey ? `
         <div style="margin-top: 12px; padding: 12px; background-color: #f8fafc; border-left: 6px solid #4f46e5; border-radius: 4px; font-size: 1.05em; break-inside: avoid;">
             <strong style="color: #4f46e5; text-transform: uppercase; font-size: 0.85em;">Correct Answer:</strong>
-            <div style="margin-top: 4px;">${formatText(typeof question.answer === 'string' ? question.answer : JSON.stringify(question.answer))}</div>
+            <div style="margin-top: 4px;">${formatText(answerText)}</div>
         </div>
     ` : '';
 
-    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 3rem; width: 100%;">
-            <table style="width: 100%; border-collapse: collapse;">
+    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 3.5rem; width: 100%;">
+            <table style="width: 100%; border-collapse: collapse; break-inside: avoid;">
                 <tbody>
                     <tr>
                         <td style="vertical-align: top; width: 40px; font-weight: bold; font-size: 1.2em;">${question.questionNumber}.</td>
@@ -130,10 +140,10 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         <div style="text-align: center; width: 100%; margin-bottom: 35px; break-inside: avoid;">
             ${logoAlignment === 'center' ? logoImgTag : ''}
             <h1 style="margin: 0; font-size: 32px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">${escapeHtml(paperData.schoolName)}</h1>
-            <h2 style="margin: 10px 0; font-size: 24px; text-decoration: underline; font-weight: bold;">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - ANSWER KEY' : ''}</h2>
+            <h2 style="margin: 10px 0; font-size: 24px; text-decoration: underline; font-weight: bold;">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - OFFICIAL ANSWER KEY' : ''}</h2>
             <p style="margin: 5px 0; font-weight: 600; font-size: 1.4em;">Class: ${escapeHtml(paperData.className)}</p>
             <hr style="border: 0; border-top: 4px solid #000; margin-top: 20px;">
-            <table style="width: 100%; margin: 12px 0; font-weight: bold; font-size: 1.3em;">
+            <table style="width: 100%; margin: 12px 0; font-weight: bold; font-size: 1.3em; border-collapse: collapse;">
                 <tr>
                     <td style="text-align: left;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
                     <td style="text-align: right;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
@@ -163,5 +173,5 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         });
     });
 
-    return `<div id="paper-root" style="font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%;">${contentHtml}</div>`;
+    return `<div id="paper-root" style="font-family: inherit; color: #000; background: #fff; width: 100%; min-height: 100%; box-sizing: border-box;">${contentHtml}</div>`;
 };
