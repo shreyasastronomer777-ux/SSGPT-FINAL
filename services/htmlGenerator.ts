@@ -10,8 +10,14 @@ const escapeHtml = (unsafe: string | undefined): string => {
         .replace(/'/g, "&#039;");
 }
 
+const stripLeadingNumbering = (text: string): string => {
+    // Removes things like "1. ", "1) ", "i. ", "i) ", "(i) " from the start of the string
+    return text.replace(/^(\(?[a-zA-Z0-9]+\s*[\.\)]\s*)+/, '').trim();
+};
+
 const formatSpecialText = (text: string = ''): string => {
-    return text.trim().replace(/\n/g, '<br/>');
+    const stripped = stripLeadingNumbering(text);
+    return stripped.trim().replace(/\n/g, '<br/>');
 };
 
 const toRoman = (num: number): string => {
@@ -60,19 +66,17 @@ const renderOptions = (question: Question): string => {
 
         const rows = colA.map((item, index) => `
             <tr>
-                <td style="padding: 10px 12px; vertical-align: top; border: 1px solid #000; width: 45%;">(${toRoman(index + 1).toLowerCase()}) ${formatSpecialText(item)}</td>
-                <td style="padding: 10px 12px; vertical-align: top; border: 1px solid #000; width: 10%; text-align: center; color: #64748b;">---</td>
-                <td style="padding: 10px 12px; vertical-align: top; border: 1px solid #000; width: 45%;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatSpecialText(colB[index])}` : ''}</td>
+                <td style="padding: 12px; vertical-align: middle; border: 1px solid #000; width: 50%; line-height: 1.5;">(${toRoman(index + 1).toLowerCase()}) ${formatSpecialText(item)}</td>
+                <td style="padding: 12px; vertical-align: middle; border: 1px solid #000; width: 50%; line-height: 1.5;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatSpecialText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
         return `
-            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 1em; border: 2px solid #000;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 1.05em; border: 2px solid #000;">
                 <thead>
                     <tr style="text-align: left; background-color: #f8fafc; border-bottom: 2px solid #000;">
-                        <th style="padding: 12px; border: 1px solid #000; width: 45%; font-weight: bold;">Column A</th>
-                        <th style="padding: 12px; border: 1px solid #000; width: 10%; text-align: center; font-weight: bold;">Link</th>
-                        <th style="padding: 12px; border: 1px solid #000; width: 45%; font-weight: bold;">Column B</th>
+                        <th style="padding: 12px; border: 1px solid #000; width: 50%; font-weight: bold;">Column A</th>
+                        <th style="padding: 12px; border: 1px solid #000; width: 50%; font-weight: bold;">Column B</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -139,7 +143,7 @@ const generateHeaderHtml = (paperData: QuestionPaperData, titleOverride?: string
     const schoolDetails = `
         <h3 style="font-size: 22px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">${escapeHtml(paperData.schoolName)}</h3>
         <h4 style="font-size: 18px; font-weight: bold; margin: 6px 0; text-decoration: underline;">${escapeHtml(title)}</h4>
-        <p style="margin: 5px 0; font-weight: bold; font-size: 1.1em;">Class: ${escapeHtml(paperData.className)}</p>
+        <p style="margin: 4px 0; font-weight: bold; font-size: 1.1em;">Class: ${escapeHtml(paperData.className)}</p>
     `;
     if (logoSrc && (logoAlignment === 'left' || logoAlignment === 'right')) {
         if (logoAlignment === 'left') {
