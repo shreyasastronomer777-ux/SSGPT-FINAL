@@ -36,10 +36,13 @@ You are an expert Question Paper Designer. Generate a high-quality exam paper in
 **STRICT MATHEMATICAL FORMATTING (CRITICAL):**
 1. **LATEX FOR ALL MATH:** Use LaTeX for ALL formulas, fractions, variables, and symbols (multiplication $\\times$, division $\\div$, etc.).
 2. **DELIMITERS:** Wrap ALL math content in single dollar signs: $...$.
-3. **DOUBLE BACKSLASHES:** In the JSON output, you MUST use DOUBLE BACKSLASHES for all LaTeX commands. 
+3. **JSON ESCAPING (MANDATORY):** In the JSON output strings, you MUST use DOUBLE BACKSLASHES (e.g. \\\\frac, \\\\times) for all LaTeX commands. If you use a single backslash like \times, it will be lost during JSON parsing.
    - CORRECT: "$\\times$", "$\\frac{3}{5}$", "$\\sqrt{x}$".
    - INCORRECT: "\times", "\frac{3}{5}".
-4. **MATCH THE FOLLOWING:** For Match the Following questions, the 'options' field MUST be an object: {"columnA": ["item1", "item2"...], "columnB": ["itemA", "itemB"...]}.
+
+**STRUCTURAL RULES:**
+- DO NOT include numbering like "1. ", "2. " inside the "questionText" or MTF item strings. The system handles numbering automatically.
+- MATCH THE FOLLOWING: The "options" field MUST be: {"columnA": ["item1", "item2"...], "columnB": ["matchB", "matchA"...]}. Shuffle Column B.
 
 Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
 Question mix: ${JSON.stringify(questionDistribution)}
@@ -126,7 +129,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     const tools: FunctionDeclaration[] = [
         {
             name: 'addQuestion',
-            description: 'Insert a new question. Use double backslashes for math commands.',
+            description: 'Insert a new question. Use DOUBLE backslashes for LaTeX commands.',
             parameters: {
                 type: Type.OBJECT,
                 properties: {
@@ -177,9 +180,9 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `You are an expert exam editor. Use tools to modify the paper. 
-            STRICT MATH: Use LaTeX commands with DOUBLE backslashes in JSON arguments (e.g. "$\\times$"). 
-            ALWAYS wrap math in $ delimiters.`,
+            systemInstruction: `You are an expert exam editor. Use tools to modify the paper based on user requests. 
+            STRICT MATH: Use LaTeX commands with DOUBLE backslashes in tool arguments (e.g. "$\\times$"). 
+            DO NOT add repetitive numbering like "1. " in question text.`,
             tools: [{ functionDeclarations: tools }]
         }
     });
