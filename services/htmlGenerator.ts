@@ -31,7 +31,7 @@ const renderOptions = (question: Question): string => {
     if (question.type === QuestionType.MultipleChoice && Array.isArray(question.options)) {
         const options = question.options as string[];
         if (options.length >= 4) {
-            return `<table style="width: 100%; border-collapse: collapse;"><tbody>
+            return `<table style="width: 100%; border-collapse: collapse; margin-top: 8px;"><tbody>
                     <tr>
                         <td style="width: 50%; vertical-align: top; padding: 2px 10px 2px 0; word-wrap: break-word; white-space: normal;">(a) ${formatSpecialText(options[0])}</td>
                         <td style="width: 50%; vertical-align: top; padding: 2px 0 2px 10px; word-wrap: break-word; white-space: normal;">(b) ${formatSpecialText(options[1])}</td>
@@ -42,30 +42,41 @@ const renderOptions = (question: Question): string => {
                     </tr>
                 </tbody></table>`;
         }
-        return `<div>${options.map((opt, i) => `<div style="padding: 2px 0;">(${String.fromCharCode(97 + i)}) ${formatSpecialText(opt)}</div>`).join('')}</div>`
-    } else if (question.type === QuestionType.MatchTheFollowing && typeof question.options === 'object' && question.options && 'columnA' in question.options && 'columnB' in question.options) {
-        const { columnA, columnB } = question.options as { columnA: string[], columnB: string[] };
-         if (!Array.isArray(columnA) || !Array.isArray(columnB) || columnA.length !== columnB.length) {
-            return '<!-- Invalid Match The Following options data -->';
-        }
-        const header = `<thead>
-            <tr style="background-color: #f8f8f8; font-weight: bold;">
-                <th style="padding: 12px; text-align: left; width: 50%; border-right: 1px solid #cccccc; border-bottom: 1px solid #cccccc;">Column A</th>
-                <th style="padding: 12px; text-align: left; width: 50%; border-bottom: 1px solid #cccccc;">Column B</th>
-            </tr>
-        </thead>`;
+        return `<div style="margin-top: 8px;">${options.map((opt, i) => `<div style="padding: 2px 0;">(${String.fromCharCode(97 + i)}) ${formatSpecialText(opt)}</div>`).join('')}</div>`
+    } else if (question.type === QuestionType.MatchTheFollowing) {
+        let colA: string[] = [];
+        let colB: string[] = [];
 
-        const rows = columnA.map((item, index) => `
+        // Handle both structured object and array-of-strings structure (standard AI output)
+        if (typeof question.options === 'object' && question.options && 'columnA' in question.options && 'columnB' in question.options) {
+            colA = (question.options as any).columnA;
+            colB = (question.options as any).columnB;
+        } else if (Array.isArray(question.options)) {
+            const items = question.options as string[];
+            const mid = Math.ceil(items.length / 2);
+            colA = items.slice(0, mid);
+            colB = items.slice(mid);
+        }
+
+        if (colA.length === 0) return '';
+
+        const rows = colA.map((item, index) => `
             <tr style="break-inside: avoid; page-break-inside: avoid;">
-                <td style="padding: 12px; vertical-align: top; width: 50%; border-right: 1px solid #cccccc; border-top: 1px solid #cccccc;">(${toRoman(index + 1)}) ${formatSpecialText(item)}</td>
-                <td style="padding: 12px; vertical-align: top; width: 50%; border-top: 1px solid #cccccc;">(${String.fromCharCode(97 + index)}) ${formatSpecialText(columnB[index])}</td>
+                <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 50%; border-bottom: 0.5px solid #eee;">(${toRoman(index + 1).toLowerCase()}) ${formatSpecialText(item)}</td>
+                <td style="padding: 6px 0 6px 10px; vertical-align: top; width: 50%; border-bottom: 0.5px solid #eee;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatSpecialText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
-        return `<table style="width: 100%; border-collapse: collapse; border: 1px solid #cccccc; margin-top: 1.25rem; break-inside: avoid; page-break-inside: avoid;">
-            ${header}
-            <tbody>${rows}</tbody>
-        </table>`;
+        return `
+            <table style="width: 100%; border-collapse: collapse; margin-top: 12px; border: none; font-size: 0.95em;">
+                <thead>
+                    <tr style="text-align: left; font-weight: bold; border-bottom: 1.5px solid #000;">
+                        <th style="padding: 4px 10px 8px 0; width: 50%;">Column A</th>
+                        <th style="padding: 4px 0 8px 10px; width: 50%;">Column B</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
     }
     return '';
 };
@@ -74,7 +85,7 @@ const renderQuestion = (question: Question): string => {
     const optionsHtml = renderOptions(question);
     const questionText = formatSpecialText(question.questionText);
     const questionColorStyle = question.styles?.color ? `color: ${escapeHtml(question.styles.color)};` : '';
-    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 1rem;">
+    return `<div class="question-item" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 1.25rem;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
                     <tr>
@@ -84,7 +95,7 @@ const renderQuestion = (question: Question): string => {
                     </tr>
                 </tbody>
             </table>
-            ${optionsHtml ? `<div class="question-options" style="padding-left: 30px; margin-top: 0.5rem;">${optionsHtml}</div>` : ''}
+            ${optionsHtml ? `<div class="question-options" style="padding-left: 30px;">${optionsHtml}</div>` : ''}
         </div>`;
 };
 
