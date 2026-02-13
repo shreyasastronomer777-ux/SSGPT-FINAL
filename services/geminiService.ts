@@ -37,13 +37,20 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
 
     const finalPrompt = `
 You are an expert Question Paper Designer. Generate a high-quality exam paper in JSON.
-STRICT MATH: Use LaTeX $...$ for ALL math, fractions, and variables.
+
+**STRICT MATHEMATICAL FORMATTING (CRITICAL):**
+1. **LATEX FOR ALL MATH:** Use LaTeX for ALL expressions, formulas, fractions, variables, and symbols.
+2. **DELIMITERS:** Wrap ALL math content in single dollar signs: $...$.
+3. **BACKSLASHES:** In JSON strings, you MUST use double backslashes for LaTeX commands. 
+   - CORRECT: "$\\frac{3}{5}$", "$\\times$", "$\\pm$", "$\\sqrt{x}$".
+   - INCORRECT: "\frac{3}{5}", "\times".
+4. **FRACTIONS:** Never use "3/4". Always use "$\\frac{3}{4}$".
 
 Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
 Question mix: ${JSON.stringify(questionDistribution)}
 ${sourceMaterials ? `Source Material: ${sourceMaterials}` : ''}
 
-Return JSON array of objects: {type, questionText, options: string[], answer: string, marks, difficulty, taxonomy}.
+Return JSON array of objects: {type, questionText, options: string[] | null, answer: string, marks, difficulty, taxonomy}.
 `;
 
     try {
@@ -59,7 +66,7 @@ Return JSON array of objects: {type, questionText, options: string[], answer: st
                         properties: {
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
-                            options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            options: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                             answer: { type: Type.STRING },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
@@ -92,7 +99,6 @@ Return JSON array of objects: {type, questionText, options: string[], answer: st
     }
 };
 
-// Fix: Added generateImage implementation using gemini-2.5-flash-image to fix import error in components/ImageGenerationModal.tsx
 export const generateImage = async (prompt: string, aspectRatio: string = '1:1'): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -111,7 +117,6 @@ export const generateImage = async (prompt: string, aspectRatio: string = '1:1')
         const candidates = response.candidates;
         if (!candidates || candidates.length === 0) throw new Error("No candidates returned");
         
-        // Find the image part in the response
         for (const part of candidates[0].content.parts) {
             if (part.inlineData) {
                 return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
@@ -177,7 +182,9 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: "You are an expert exam editor. Use the tools to modify the paper. ALWAYS use LaTeX $...$ for math. Guide the user through changes.",
+            systemInstruction: `You are an expert exam editor. Use tools to modify the paper. 
+            STRICT MATH: Use LaTeX commands with DOUBLE backslashes in JSON arguments, e.g., "$\\frac{1}{2}$". 
+            ALWAYS wrap math in $ delimiters.`,
             tools: [{ functionDeclarations: tools }]
         }
     });
@@ -214,7 +221,7 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: ` OCR/Analyze this text into JSON. Math must be LaTeX. Text: ${text}`,
+        contents: `OCR/Analyze this text into JSON. Math must be LaTeX with double backslashes for commands. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
@@ -225,7 +232,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: { parts: [...imageParts, { text: "OCR this handwritten exam to JSON. Use LaTeX math." }] },
+        contents: { parts: [...imageParts, { text: "OCR this handwritten exam to JSON. Use LaTeX math with double backslashes in strings." }] },
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text) as AnalysisResult;
