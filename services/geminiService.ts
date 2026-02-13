@@ -36,13 +36,14 @@ You are an expert Question Paper Designer. Generate a high-quality exam paper in
 **STRICT MATHEMATICAL FORMATTING (CRITICAL):**
 1. **LATEX FOR ALL MATH:** Use LaTeX for ALL formulas, fractions, variables, and symbols (multiplication $\\times$, division $\\div$, etc.).
 2. **DELIMITERS:** Wrap ALL math content in single dollar signs: $...$.
-3. **JSON ESCAPING (MANDATORY):** In the JSON output strings, you MUST use DOUBLE BACKSLASHES (e.g. \\\\frac, \\\\times) for all LaTeX commands. If you use a single backslash like \times, it will be lost during JSON parsing.
+3. **JSON ESCAPING (MANDATORY):** In the JSON output strings, you MUST use DOUBLE BACKSLASHES (e.g. \\\\frac, \\\\times) for all LaTeX commands.
    - CORRECT: "$\\times$", "$\\frac{3}{5}$", "$\\sqrt{x}$".
    - INCORRECT: "\times", "\frac{3}{5}".
 
 **STRUCTURAL RULES:**
-- DO NOT include numbering like "1. ", "2. " or "(i)" inside the "questionText" or MTF item strings. The system handles numbering automatically.
-- MATCH THE FOLLOWING: The "options" field MUST be: {"columnA": ["item1", "item2"...], "columnB": ["matchB", "matchA"...]}. Shuffle Column B.
+- DO NOT include ANY numbering like "1. ", "2. ", "(i)", "a)", etc. inside the "questionText" or MTF item strings. The system handles all numbering automatically.
+- MULTIPLE CHOICE: Provide options as an array of 4 strings.
+- MATCH THE FOLLOWING: The "options" field MUST be: {"columnA": ["item1", "item2"...], "columnB": ["matchB", "matchA"...]}. Shuffle Column B randomly. DO NOT include the word "Link" in the data.
 
 Subject: ${subject}, Class: ${className}, Topics: ${topics}, Language: ${language}, Marks: ${totalMarks}, Time: ${timeAllowed}.
 Question mix: ${JSON.stringify(questionDistribution)}
@@ -182,7 +183,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
         config: {
             systemInstruction: `You are an expert exam editor. Use tools to modify the paper based on user requests. 
             STRICT MATH: Use LaTeX commands with DOUBLE backslashes in tool arguments (e.g. "$\\times$"). 
-            DO NOT add repetitive numbering like "1. " or "(i)" in question text or tool arguments.`,
+            DO NOT add redundant numbering inside question text.`,
             tools: [{ functionDeclarations: tools }]
         }
     });
