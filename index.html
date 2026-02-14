@@ -79,34 +79,35 @@
         100% { background-position: 0% 50%; }
     }
     
-    /* PRODUCTION-GRADE KATEX RENDERING FIXES */
+    /* STANDARD PROFESSIONAL KATEX STYLING */
+    /* Restore default layout mechanisms for correct geometry */
     .katex {
         font-size: 1.1em !important;
-        line-height: 1.2 !important;
-        white-space: nowrap !important;
-        display: inline-block;
         text-indent: 0;
     }
-
-    /* Vertical clearance for fractions/roots */
-    .katex .mfrac, .katex .vlist-t {
-        margin: 0.15em 0 !important;
-    }
     
+    /* Add vertical breathing room for display math */
     .katex-display {
-        display: block;
-        margin: 2.5em 0 !important; /* Forces vertical separation */
-        padding: 0.5em 0;
+        margin: 1em 0 !important;
         overflow-x: auto;
         overflow-y: hidden;
-        width: 100%;
-        text-align: center;
+        padding: 0.5em 0;
     }
 
     /* Prevent Collapsed Spacing in Paper View */
     .question-block {
-        margin-bottom: 3.5em !important;
+        margin-bottom: 2em !important; /* Professional standard spacing */
         display: block !important;
+        page-break-inside: avoid;
+    }
+
+    /* Print Optimizations */
+    @media print {
+      body { background-color: #fff !important; }
+      .print\\:hidden { display: none; }
+      main { padding: 0 !important; margin: 0 !important; }
+      .paper-page { box-shadow: none !important; margin: 0 !important; page-break-after: always; border: none !important; }
+      .paper-page-content { padding: 40px !important; }
     }
 
     [contenteditable="true"] {
@@ -131,16 +132,8 @@
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
 
-    /* CSS Fix for Spacing Collapse */
-    .prose p { margin-top: 1.25em !important; margin-bottom: 1.25em !important; }
-    .prose h1, .prose h2, .prose h3 { margin-top: 2em !important; margin-bottom: 1em !important; }
-
-    @media print {
-      body { background-color: #fff !important; }
-      .print\\:hidden { display: none; }
-      main { padding: 0 !important; margin: 0 !important; }
-      .paper-page { box-shadow: none !important; margin: 0 !important; page-break-after: always; }
-    }
+    .prose p { margin-top: 0.75em !important; margin-bottom: 0.75em !important; }
+    .prose h1, .prose h2, .prose h3 { margin-top: 1.5em !important; margin-bottom: 0.75em !important; }
   </style>
 </head>
   <body class="antialiased">

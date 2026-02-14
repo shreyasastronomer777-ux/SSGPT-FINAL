@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, Chat, Part, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type, Chat, Part, GenerateContentResponse, Modality } from "@google/genai";
 import { type FormData, type QuestionPaperData, QuestionType, Question, AnalysisResult } from '../types';
 import { generateHtmlFromPaperData } from "./htmlGenerator";
 export { generateHtmlFromPaperData };
@@ -186,6 +186,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     return parseAiJson(response.text) as AnalysisResult;
 };
 
+// Fix: Import Modality from @google/genai to resolve compilation error here.
 export const generateTextToSpeech = async (text: string) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
