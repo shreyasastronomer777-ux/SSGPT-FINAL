@@ -27,25 +27,17 @@ type AIModelConfig = {
 const MODELS: AIModelConfig[] = [
     { 
         id: 'ssgpt-1', 
-        name: 'SSGPT 2.5', 
-        modelName: 'gemini-2.5-flash-preview', 
-        description: 'Fast & Efficient', 
+        name: 'SSGPT 2.0 Flash', 
+        modelName: 'gemini-2.0-flash', 
+        description: 'Fast & Reliable', 
         icon: '⚡' 
     },
     { 
         id: 'ssgpt-1.5', 
-        name: 'SSGPT 2.5 Pro', 
-        modelName: 'gemini-2.5-pro-preview', 
-        description: 'Advanced Reasoning', 
+        name: 'SSGPT 2.0 Pro', 
+        modelName: 'gemini-2.0-flash', 
+        description: 'Balanced Power', 
         icon: '✨' 
-    },
-    { 
-        id: 'ssgpt-7', 
-        name: 'SSGPT Reasoning', 
-        modelName: 'gemini-2.5-pro-preview', 
-        description: 'Deep Thinking', 
-        icon: '🧠',
-        useThinking: true
     },
 ];
 
@@ -284,7 +276,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(err) { setCurrentUserText("Microphone access denied."); setIsLiveSessionActive(false); return; }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }); const sources = new Set<AudioBufferSourceNode>(); nextStartTime = 0;
     sessionPromiseRef.current = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+      model: 'gemini-2.0-flash-exp',
       callbacks: {
         onopen: () => { setCurrentUserText("Connected! You can start talking now."); const source = inputAudioContext.createMediaStreamSource(stream); const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1); scriptProcessor.onaudioprocess = (audioProcessingEvent) => { const pcmBlob = createBlob(audioProcessingEvent.inputBuffer.getChannelData(0)); sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob })); }; source.connect(scriptProcessor); scriptProcessor.connect(inputAudioContext.destination); },
         onmessage: async (message: LiveServerMessage) => {

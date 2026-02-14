@@ -81,7 +81,7 @@ Do not explain anything. Output ONLY the JSON.
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview",
+            model: "gemini-2.0-flash",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -176,7 +176,7 @@ Your entire output must be ONLY the JSON array of question objects, without any 
         }
 
         const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro-preview",
+        model: "gemini-2.0-flash",
         contents: [{ parts }],
         config: { 
             responseMimeType: "application/json",
@@ -322,7 +322,7 @@ Your entire output must be ONLY the JSON object conforming to the provided schem
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro-preview",
+      model: "gemini-2.0-flash",
       contents: [{ parts: [{ text: analysisPrompt }] }],
       config: {
         responseMimeType: "application/json",
@@ -370,7 +370,7 @@ Your entire output must be ONLY the JSON object conforming to the provided schem
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-pro-preview",
+            model: "gemini-2.0-flash",
             contents,
             config: {
                 responseMimeType: "application/json",
@@ -409,7 +409,7 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
+            model: "gemini-2.0-flash-exp",
             contents: [{ parts: [{ text }] }],
             config: {
                 responseModalities: [Modality.AUDIO],
@@ -463,7 +463,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
 ${questionsSummary}`;
 
     const chat = ai.chats.create({
-        model: "gemini-2.5-flash-preview",
+        model: "gemini-2.0-flash",
         config: {
             systemInstruction,
             tools: [{ functionDeclarations: editTools }]
@@ -491,7 +491,7 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     const textContent = { schoolName: paperData.schoolName, className: paperData.className, subject: paperData.subject, questions: paperData.questions.map(q => ({ questionNumber: q.questionNumber, questionText: q.questionText, options: (typeof q.options === 'object' && q.options !== null) ? JSON.stringify(q.options) : q.options, answer: (typeof q.answer === 'object' && q.answer !== null) ? JSON.stringify(q.answer) : q.answer })) };
     const prompt = `You are a translation expert. Translate the following JSON object's text content into **${targetLanguage}**. - Translate all string values. - For 'options' and 'answer' fields that contain stringified JSON, you must translate the text inside the JSON, but return the entire field as a valid, escaped JSON string. - Maintain the exact JSON structure of the original object. Your entire output must be a single, valid JSON object. **JSON to Translate:** ${JSON.stringify(textContent, null, 2)}`;
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.5-pro-preview", contents: prompt, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['questionNumber', 'questionText', 'answer'] } } }, required: ['schoolName', 'className', 'subject', 'questions'] } } });
+        const response = await ai.models.generateContent({ model: "gemini-2.0-flash", contents: prompt, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['questionNumber', 'questionText', 'answer'] } } }, required: ['schoolName', 'className', 'subject', 'questions'] } } });
         const translatedContent = JSON.parse(response.text);
         const processedTranslatedQuestions = translatedContent.questions.map((q: any) => {
             const newQ = {...q};
@@ -530,7 +530,7 @@ export const translateQuestionService = async (question: Question, targetLanguag
     const responseSchema = { type: Type.OBJECT, properties: { questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING }, }, required: ['questionText', 'options', 'answer'] };
 
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.5-pro-preview", contents: prompt, config: { responseMimeType: "application/json", responseSchema } });
+        const response = await ai.models.generateContent({ model: "gemini-2.0-flash", contents: prompt, config: { responseMimeType: "application/json", responseSchema } });
         const translatedContent = JSON.parse(response.text);
         
         let parsedOptions: any = translatedContent.options;
@@ -567,7 +567,7 @@ export const editImage = async (prompt: string, imageBase64: string, mimeType: s
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash-image', contents: { parts: [ { inlineData: { data: imageBase64.split(',')[1], mimeType: mimeType } }, { text: prompt } ] }, config: { responseModalities: [Modality.IMAGE] } });
+        const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: { parts: [ { inlineData: { data: imageBase64.split(',')[1], mimeType: mimeType } }, { text: prompt } ] }, config: { responseModalities: [Modality.IMAGE] } });
         for (const part of response.candidates[0].content.parts) { if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`; }
         throw new Error("Image editing returned no image.");
     } catch (error) { 
