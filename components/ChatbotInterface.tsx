@@ -159,6 +159,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
           config.thinkingConfig = { thinkingBudget: 16384 }; // High budget for deep reasoning
       }
 
+      // Fix: Use selected model name, fallback to 2.0-flash to allow retry logic to work on existing models
       const newChat = ai.chats.create({ 
           model: selectedModel.modelName, 
           config 
@@ -166,8 +167,10 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       
       setChat(newChat);
       const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
+      
       if (!importedFilesRaw) {
-        const responseStream = await newChat.sendMessageStream({ message: "Start conversation" });
+        // Fix: Use generateChatResponseStream to leverage the retry logic in services/geminiService
+        const responseStream = await generateChatResponseStream(newChat, [{ text: "Start conversation" }]);
         const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '' };
         setMessages([newBotMessage]);
         for await (const chunk of responseStream) { setMessages(prev => prev.map(msg => msg.id === newBotMessage.id ? {...msg, text: msg.text + chunk.text} : msg)); }
@@ -276,7 +279,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(err) { setCurrentUserText("Microphone access denied."); setIsLiveSessionActive(false); return; }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }); const sources = new Set<AudioBufferSourceNode>(); nextStartTime = 0;
     sessionPromiseRef.current = ai.live.connect({
-      model: 'gemini-2.0-flash-exp',
+      // Fix: Updated to correct Live API model version
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {
         onopen: () => { setCurrentUserText("Connected! You can start talking now."); const source = inputAudioContext.createMediaStreamSource(stream); const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1); scriptProcessor.onaudioprocess = (audioProcessingEvent) => { const pcmBlob = createBlob(audioProcessingEvent.inputBuffer.getChannelData(0)); sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob })); }; source.connect(scriptProcessor); scriptProcessor.connect(inputAudioContext.destination); },
         onmessage: async (message: LiveServerMessage) => {

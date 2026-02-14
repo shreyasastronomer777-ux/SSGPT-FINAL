@@ -31,12 +31,42 @@ const handleApiError = (error: any, context: string) => {
     }
 
     // Detect 429 or Service Unavailable or Overloaded model
-    if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Overloaded")) {
-        throw new RateLimitError("System is currently experiencing high traffic. Please try again in a few moments.");
+    if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Overloaded") || msg.includes("503")) {
+        throw new RateLimitError("High traffic detected. We are processing your request, please wait...");
     }
     
     throw new Error(msg);
 };
+
+// --- Resilience Logic: Exponential Backoff ---
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function callWithRetry<T>(operation: () => Promise<T>, retries = 5, initialDelay = 2000): Promise<T> {
+    try {
+        return await operation();
+    } catch (error: any) {
+        const msg = error.message || '';
+        const isTransient = msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Overloaded") || msg.includes("503");
+
+        if (retries > 0 && isTransient) {
+            // Add jitter to prevent thundering herd
+            const jitter = Math.random() * 1000;
+            const delayTime = initialDelay + jitter;
+            
+            console.warn(`Rate limit hit. Retrying in ${Math.round(delayTime)}ms... (${retries} attempts left)`);
+            await sleep(delayTime);
+            
+            // Double the delay for the next attempt (Exponential Backoff)
+            return callWithRetry(operation, retries - 1, initialDelay * 2);
+        }
+        
+        // If retries exhausted or error is not transient, re-throw via handler
+        if (isTransient) {
+             throw new RateLimitError("System is under extreme load. Please try again in a minute.");
+        }
+        throw error;
+    }
+}
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
     if (!process.env.API_KEY) throw new Error("API_KEY not set");
@@ -80,12 +110,14 @@ Do not explain anything. Output ONLY the JSON.
 `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: prompt,
-            config: { responseMimeType: "application/json" }
+        return await callWithRetry(async () => {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.0-flash",
+                contents: prompt,
+                config: { responseMimeType: "application/json" }
+            });
+            return JSON.parse(response.text);
         });
-        return JSON.parse(response.text);
     } catch (error) {
         handleApiError(error, "extractConfigFromTranscript");
     }
@@ -175,19 +207,20 @@ Your entire output must be ONLY the JSON array of question objects, without any 
             }
         }
 
-        const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{ parts }],
-        config: { 
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.ARRAY,
-                items: questionSchema
-            }
-        }
+        const generatedQuestionsRaw = await callWithRetry(async () => {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.0-flash",
+                contents: [{ parts }],
+                config: { 
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: questionSchema
+                    }
+                }
+            });
+            return JSON.parse(response.text) as any[];
         });
-
-        const generatedQuestionsRaw = JSON.parse(response.text) as any[];
 
         if (!Array.isArray(generatedQuestionsRaw)) {
             throw new Error("AI did not return a valid array of questions.");
@@ -321,16 +354,17 @@ Your entire output must be ONLY the JSON object conforming to the provided schem
 `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [{ parts: [{ text: analysisPrompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: analysisSchema
-      }
+    return await callWithRetry(async () => {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.0-flash",
+            contents: [{ parts: [{ text: analysisPrompt }] }],
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: analysisSchema
+            }
+        });
+        return JSON.parse(response.text) as AnalysisResult;
     });
-
-    return JSON.parse(response.text) as AnalysisResult;
 
   } catch (error) {
     handleApiError(error, "analyzePastedText");
@@ -369,15 +403,17 @@ Your entire output must be ONLY the JSON object conforming to the provided schem
     const contents = [{ parts: [...imageParts, { text: analysisPrompt }] }];
 
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: analysisSchema
-            }
+        return await callWithRetry(async () => {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.0-flash",
+                contents,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: analysisSchema
+                }
+            });
+            return JSON.parse(response.text) as AnalysisResult;
         });
-        return JSON.parse(response.text) as AnalysisResult;
     } catch (error) {
         handleApiError(error, "analyzeHandwrittenImages");
         throw error;
@@ -386,17 +422,20 @@ Your entire output must be ONLY the JSON object conforming to the provided schem
 
 export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch?: boolean, useThinking?: boolean): Promise<AsyncGenerator<GenerateContentResponse>> => {
     try {
-        if (useSearch || useThinking) {
-            const config: any = {};
-            if (useSearch) config.tools = [{ googleSearch: {} }];
-            if (useThinking) config.thinkingConfig = { thinkingBudget: 8192 };
+        // Retry logic for streaming initialization
+        return await callWithRetry(async () => {
+            if (useSearch || useThinking) {
+                const config: any = {};
+                if (useSearch) config.tools = [{ googleSearch: {} }];
+                if (useThinking) config.thinkingConfig = { thinkingBudget: 8192 };
 
-            return chat.sendMessageStream({
-                message: messageParts,
-                config: config,
-            });
-        }
-        return chat.sendMessageStream({ message: messageParts });
+                return await chat.sendMessageStream({
+                    message: messageParts,
+                    config: config,
+                });
+            }
+            return await chat.sendMessageStream({ message: messageParts });
+        });
     } catch (error) {
         handleApiError(error, "generateChatResponseStream");
         throw error;
@@ -408,17 +447,19 @@ export const generateTextToSpeech = async (text: string): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash-exp",
-            contents: [{ parts: [{ text }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-            },
+        return await callWithRetry(async () => {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.0-flash-exp",
+                contents: [{ parts: [{ text }] }],
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+                },
+            });
+            const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (!base64Audio) throw new Error("TTS generation returned no audio data.");
+            return base64Audio;
         });
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!base64Audio) throw new Error("TTS generation returned no audio data.");
-        return base64Audio;
     } catch (error) {
         handleApiError(error, "generateTextToSpeech");
         throw error;
@@ -474,11 +515,13 @@ ${questionsSummary}`;
 
 export const getAiEditResponse = async (chat: Chat, instruction: string) => {
     try {
-        const response = await chat.sendMessage({ message: instruction });
-        if (response.functionCalls && response.functionCalls.length > 0) {
-            return { functionCalls: response.functionCalls, text: null };
-        }
-        return { functionCalls: null, text: response.text };
+        return await callWithRetry(async () => {
+            const response = await chat.sendMessage({ message: instruction });
+            if (response.functionCalls && response.functionCalls.length > 0) {
+                return { functionCalls: response.functionCalls, text: null };
+            }
+            return { functionCalls: null, text: response.text };
+        });
     } catch (error) {
         handleApiError(error, "getAiEditResponse");
         throw error;
@@ -491,7 +534,10 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     const textContent = { schoolName: paperData.schoolName, className: paperData.className, subject: paperData.subject, questions: paperData.questions.map(q => ({ questionNumber: q.questionNumber, questionText: q.questionText, options: (typeof q.options === 'object' && q.options !== null) ? JSON.stringify(q.options) : q.options, answer: (typeof q.answer === 'object' && q.answer !== null) ? JSON.stringify(q.answer) : q.answer })) };
     const prompt = `You are a translation expert. Translate the following JSON object's text content into **${targetLanguage}**. - Translate all string values. - For 'options' and 'answer' fields that contain stringified JSON, you must translate the text inside the JSON, but return the entire field as a valid, escaped JSON string. - Maintain the exact JSON structure of the original object. Your entire output must be a single, valid JSON object. **JSON to Translate:** ${JSON.stringify(textContent, null, 2)}`;
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.0-flash", contents: prompt, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['questionNumber', 'questionText', 'answer'] } } }, required: ['schoolName', 'className', 'subject', 'questions'] } } });
+        const response = await callWithRetry(async () => {
+            return await ai.models.generateContent({ model: "gemini-2.0-flash", contents: prompt, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['questionNumber', 'questionText', 'answer'] } } }, required: ['schoolName', 'className', 'subject', 'questions'] } } });
+        });
+        
         const translatedContent = JSON.parse(response.text);
         const processedTranslatedQuestions = translatedContent.questions.map((q: any) => {
             const newQ = {...q};
@@ -530,7 +576,10 @@ export const translateQuestionService = async (question: Question, targetLanguag
     const responseSchema = { type: Type.OBJECT, properties: { questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING }, }, required: ['questionText', 'options', 'answer'] };
 
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.0-flash", contents: prompt, config: { responseMimeType: "application/json", responseSchema } });
+        const response = await callWithRetry(async () => {
+            return await ai.models.generateContent({ model: "gemini-2.0-flash", contents: prompt, config: { responseMimeType: "application/json", responseSchema } });
+        });
+        
         const translatedContent = JSON.parse(response.text);
         
         let parsedOptions: any = translatedContent.options;
@@ -554,9 +603,11 @@ export const generateImage = async (prompt: string, aspectRatio: '1:1' | '16:9' 
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        const response = await ai.models.generateImages({ model: 'imagen-4.0-generate-001', prompt: prompt, config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: aspectRatio } });
-        if (response.generatedImages && response.generatedImages.length > 0) return `data:image/png;base64,${response.generatedImages[0].image.imageBytes}`;
-        else throw new Error("Image generation returned no images.");
+        return await callWithRetry(async () => {
+            const response = await ai.models.generateImages({ model: 'imagen-4.0-generate-001', prompt: prompt, config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: aspectRatio } });
+            if (response.generatedImages && response.generatedImages.length > 0) return `data:image/png;base64,${response.generatedImages[0].image.imageBytes}`;
+            else throw new Error("Image generation returned no images.");
+        });
     } catch(error) { 
         handleApiError(error, "generateImage");
         throw error;
@@ -567,9 +618,11 @@ export const editImage = async (prompt: string, imageBase64: string, mimeType: s
     if (!process.env.API_KEY) throw new Error("API_KEY environment variable not set");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: { parts: [ { inlineData: { data: imageBase64.split(',')[1], mimeType: mimeType } }, { text: prompt } ] }, config: { responseModalities: [Modality.IMAGE] } });
-        for (const part of response.candidates[0].content.parts) { if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`; }
-        throw new Error("Image editing returned no image.");
+        return await callWithRetry(async () => {
+            const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: { parts: [ { inlineData: { data: imageBase64.split(',')[1], mimeType: mimeType } }, { text: prompt } ] }, config: { responseModalities: [Modality.IMAGE] } });
+            for (const part of response.candidates[0].content.parts) { if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`; }
+            throw new Error("Image editing returned no image.");
+        });
     } catch (error) { 
         handleApiError(error, "editImage");
         throw error;
