@@ -87,8 +87,9 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   useEffect(() => {
     if (!process.env.API_KEY) return;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Fix: Updated model to gemini-3-flash-preview for academic chat.
     setChat(ai.chats.create({ 
-        model: 'gemini-2.5-flash', 
+        model: 'gemini-3-flash-preview', 
         config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } 
     }));
     outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -103,6 +104,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     setUserInput('');
     setIsBotTyping(true);
     try {
+      // Fix: generateChatResponseStream now receives 4 arguments to match the updated signature.
       const responseStream = await generateChatResponseStream(chat, [{ text }], false, false);
       const botMsgId = (Date.now() + 1).toString();
       setMessages(prev => [...prev, { id: botMsgId, sender: 'bot', text: '' }]);

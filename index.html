@@ -42,6 +42,7 @@
       font-family: 'Inter', sans-serif;
       margin: 0;
       padding: 0;
+      -webkit-font-smoothing: antialiased;
     }
 
     body::before {
@@ -78,45 +79,34 @@
         100% { background-position: 0% 50%; }
     }
     
-    /* PROFESSIONAL KATEX STABILIZATION & OVERLAP FIX */
+    /* PRODUCTION-GRADE KATEX RENDERING FIXES */
     .katex {
-        font-size: 1.15em !important;
-        line-height: 1.8 !important; /* Increased for vertical math safety */
-        text-indent: 0 !important;
-        display: inline-block;
+        font-size: 1.1em !important;
+        line-height: 1.2 !important;
         white-space: nowrap !important;
-        vertical-align: middle;
+        display: inline-block;
+        text-indent: 0;
+    }
+
+    /* Vertical clearance for fractions/roots */
+    .katex .mfrac, .katex .vlist-t {
+        margin: 0.15em 0 !important;
     }
     
-    /* Deep fix for fraction line overlap and clearance */
-    .katex .mfrac .vlist-t { 
-        border-collapse: separate !important; 
-    }
-    .katex .mfrac .vlist-r { 
-        padding-top: 0.5em !important; 
-        padding-bottom: 0.5em !important; 
-    }
-    .katex .frac-line { 
-        border-bottom-width: 0.12em !important;
-        margin: 0.4em 0 !important;
-        position: relative !important;
-        display: block !important;
-        height: 0 !important;
-    }
-    
-    /* Ensure clear space for roots and exponents */
-    .katex .root {
-        padding-top: 0.2em;
-    }
-    
-    .katex .vlist-s { display: none !important; }
-    
-    .katex-display { 
-        margin: 3em 0 !important;
+    .katex-display {
+        display: block;
+        margin: 2.5em 0 !important; /* Forces vertical separation */
+        padding: 0.5em 0;
         overflow-x: auto;
         overflow-y: hidden;
-        line-height: 4.0 !important;
-        padding: 2em 0;
+        width: 100%;
+        text-align: center;
+    }
+
+    /* Prevent Collapsed Spacing in Paper View */
+    .question-block {
+        margin-bottom: 3.5em !important;
+        display: block !important;
     }
 
     [contenteditable="true"] {
@@ -125,10 +115,6 @@
         white-space: pre-wrap;
         outline: none;
         caret-color: #4f46e5;
-    }
-
-    .paper-page-content:focus-within {
-        outline: 2px solid transparent;
     }
 
     ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -145,17 +131,14 @@
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
 
-    .prose-chat p:last-child { margin-bottom: 0; }
-    .prose-chat ul, .prose-chat ol { margin-left: 1.5rem; margin-bottom: 1rem; }
-    .prose-chat li { margin-bottom: 0.25rem; }
-    .prose-chat pre { background-color: #f3f4f6; color: #111827; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-family: monospace; font-size: 0.9em; margin: 1rem 0; }
-    .dark .prose-chat pre { background-color: #0f172a; color: #f1f5f9; border: 1px solid #334155; }
+    /* CSS Fix for Spacing Collapse */
+    .prose p { margin-top: 1.25em !important; margin-bottom: 1.25em !important; }
+    .prose h1, .prose h2, .prose h3 { margin-top: 2em !important; margin-bottom: 1em !important; }
 
     @media print {
       body { background-color: #fff !important; }
       .print\\:hidden { display: none; }
       main { padding: 0 !important; margin: 0 !important; }
-      #printable-area { width: 100% !important; margin: 0 !important; padding: 0 !important; }
       .paper-page { box-shadow: none !important; margin: 0 !important; page-break-after: always; }
     }
   </style>

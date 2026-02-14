@@ -57,7 +57,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try {
       if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Fix: Updated model to 'gemini-flash-lite-latest' (from gemini-2.5-flash-lite).
+      // Fix: Ensured model uses 'gemini-flash-lite-latest' alias.
       const newChat = ai.chats.create({ model: 'gemini-flash-lite-latest', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
       setChat(newChat);
       const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
@@ -114,6 +114,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       });
       setAttachedFiles([]); // Clear after sending
 
+      // Fix: Updated call to generateChatResponseStream with 4 arguments to fix compilation error.
       const responseStream = await generateChatResponseStream(chat, messageParts, useSearch, useThinking);
       const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '', grounding: [] };
       setMessages(prev => [...prev, newBotMessage]);
@@ -171,7 +172,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch(err) { setCurrentUserText("Microphone access denied."); setIsLiveSessionActive(false); return; }
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 }); const sources = new Set<AudioBufferSourceNode>(); nextStartTime = 0;
     sessionPromiseRef.current = ai.live.connect({
-      // Fix: Updated model to 'gemini-2.5-flash-native-audio-preview-12-2025' per guidelines.
+      // Fix: Updated model to 'gemini-2.5-flash-native-audio-preview-12-2025' for real-time pedagogical support.
       model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {
         onopen: () => { setCurrentUserText("Connected! You can start talking now."); const source = inputAudioContext.createMediaStreamSource(stream); const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1); scriptProcessor.onaudioprocess = (audioProcessingEvent) => { const pcmBlob = createBlob(audioProcessingEvent.inputBuffer.getChannelData(0)); sessionPromiseRef.current?.then((session) => session.sendRealtimeInput({ media: pcmBlob })); }; source.connect(scriptProcessor); scriptProcessor.connect(inputAudioContext.destination); },
