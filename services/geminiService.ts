@@ -32,7 +32,7 @@ const handleApiError = (error: any, context: string) => {
 
     // Detect 429 or Service Unavailable or Overloaded model
     if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Overloaded") || msg.includes("503")) {
-        throw new RateLimitError("High traffic detected. We are processing your request, please wait...");
+        throw new RateLimitError("System is currently experiencing high traffic. Please try again in a few moments.");
     }
     
     throw new Error(msg);
@@ -41,7 +41,8 @@ const handleApiError = (error: any, context: string) => {
 // --- Resilience Logic: Exponential Backoff ---
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function callWithRetry<T>(operation: () => Promise<T>, retries = 5, initialDelay = 2000): Promise<T> {
+// Increased retries to 8 for higher resilience under load
+async function callWithRetry<T>(operation: () => Promise<T>, retries = 8, initialDelay = 1000): Promise<T> {
     try {
         return await operation();
     } catch (error: any) {
@@ -50,19 +51,20 @@ async function callWithRetry<T>(operation: () => Promise<T>, retries = 5, initia
 
         if (retries > 0 && isTransient) {
             // Add jitter to prevent thundering herd
-            const jitter = Math.random() * 1000;
+            const jitter = Math.random() * 500;
             const delayTime = initialDelay + jitter;
             
             console.warn(`Rate limit hit. Retrying in ${Math.round(delayTime)}ms... (${retries} attempts left)`);
             await sleep(delayTime);
             
-            // Double the delay for the next attempt (Exponential Backoff)
-            return callWithRetry(operation, retries - 1, initialDelay * 2);
+            // Double the delay for the next attempt (Exponential Backoff), capped at 10 seconds
+            const nextDelay = Math.min(initialDelay * 2, 10000);
+            return callWithRetry(operation, retries - 1, nextDelay);
         }
         
         // If retries exhausted or error is not transient, re-throw via handler
         if (isTransient) {
-             throw new RateLimitError("System is under extreme load. Please try again in a minute.");
+             throw new RateLimitError("System is under extreme load. We tried multiple times but could not connect. Please try again later.");
         }
         throw error;
     }
