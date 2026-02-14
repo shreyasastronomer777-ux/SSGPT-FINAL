@@ -57,6 +57,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     });
 
     const [isExporting, setIsExporting] = useState(false);
+    const [exportProgress, setExportProgress] = useState(0);
     const [isAnswerKeyMode, setIsAnswerKeyMode] = useState(false);
     const [sidebarView, setSidebarView] = useState<'toolbar' | 'chat' | 'gallery'>('toolbar');
     const [coEditorMessages, setCoEditorMessages] = useState<CoEditorMessage[]>([]);
@@ -137,6 +138,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const handleExportPDF = async () => {
         if (isExporting) return;
         setIsExporting(true);
+        setExportProgress(0);
         try {
             const pdf = new jsPDF('p', 'px', 'a4');
             const pdfW = pdf.internal.pageSize.getWidth();
@@ -149,29 +151,42 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 return; 
             }
             
-            for (let i = 0; i < pageElements.length; i++) {
+            const totalPages = pageElements.length;
+
+            for (let i = 0; i < totalPages; i++) {
+                setExportProgress(Math.round(((i) / totalPages) * 100));
+                
                 const el = pageElements[i] as HTMLElement;
                 triggerMathRendering(el);
-                // Ensure math is fully settled before capture to avoid shifts
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Optimized delay: 800ms is sufficient for math to settle, reduced from 2000ms
+                await new Promise(resolve => setTimeout(resolve, 800));
 
                 const canvas = await html2canvas(el, { 
-                    scale: 4.5, // Ultra-high resolution for professional math crispness
+                    scale: 3, // Optimized scale: 3.0 (approx 300 DPI) is fast & high quality. 4.5 was overkill.
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
                     allowTaint: true
                 });
                 
-                const imgData = canvas.toDataURL('image/jpeg', 1.0);
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
                 if (i > 0) pdf.addPage();
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
+                
+                setExportProgress(Math.round(((i + 1) / totalPages) * 100));
             }
             pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Academic_Paper.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
             alert("Export error occurred.");
-        } finally { setIsExporting(false); }
+        } finally { 
+            // Small delay to let user see 100%
+            setTimeout(() => {
+                setIsExporting(false);
+                setExportProgress(0);
+            }, 500);
+        }
     };
 
     const handleCoEditorSend = async (msg: string) => {
@@ -199,10 +214,43 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     return (
         <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
             {isExporting && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[100] flex flex-col items-center justify-center text-white">
-                    <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
-                    <h2 className="text-3xl font-black tracking-tight text-center">Finalizing Board Standards</h2>
-                    <p className="text-slate-400 mt-4 px-10 text-center max-w-md">Locking math geometries and generating ultra-high-resolution PDF pages...</p>
+                <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[100] flex flex-col items-center justify-center text-white animate-fade-in">
+                    <div className="w-full max-w-md p-8 relative flex flex-col items-center">
+                        {/* Decorative background glow */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-indigo-500/20 rounded-full blur-[100px] animate-pulse"></div>
+                        
+                        <div className="relative z-10 flex flex-col items-center w-full">
+                            {/* Circular Progress */}
+                            <div className="relative w-24 h-24 mb-8">
+                                <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 100 100">
+                                    <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="6" className="text-slate-800" />
+                                    <circle 
+                                        cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" 
+                                        className="text-indigo-500 transition-all duration-300 ease-out"
+                                        strokeDasharray="283"
+                                        strokeDashoffset={283 - (283 * exportProgress) / 100}
+                                    />
+                                </svg>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <span className="text-xl font-bold font-mono">{exportProgress}%</span>
+                                </div>
+                            </div>
+
+                            <h2 className="text-3xl font-black tracking-tight text-center mb-2 bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Exporting Paper</h2>
+                            <p className="text-slate-400 text-center mb-8 font-medium">Rendered {Math.floor((exportProgress / 100) * pagesHtml.length)} of {pagesHtml.length} pages</p>
+
+                            {/* Linear Progress Bar with Shimmer */}
+                            <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50 relative shadow-inner">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-indigo-600 via-purple-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_2s_infinite] transition-all duration-300 ease-out relative"
+                                    style={{ width: `${exportProgress}%` }}
+                                >
+                                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                </div>
+                            </div>
+                            <p className="mt-4 text-xs text-slate-500 uppercase tracking-widest font-semibold">High-Res Vector Capture Active</p>
+                        </div>
+                    </div>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
