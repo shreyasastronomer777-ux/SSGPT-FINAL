@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentParameters, GenerateContentResponse } from "@google/genai";
 // Fix: Added QuestionPaperData to the import list from '../types'
 import { type FormData, type QuestionPaperData, QuestionType, Question, Difficulty, Taxonomy, AnalysisResult, QuestionDistributionItem } from '../types';
@@ -31,7 +32,7 @@ const handleApiError = (error: any, context: string) => {
 
     // Detect 429 or Service Unavailable or Overloaded model
     if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Overloaded")) {
-        throw new RateLimitError("System is busy (Quota Exceeded). We are retrying for you...");
+        throw new RateLimitError("System is currently experiencing high traffic. Please try again in a few moments.");
     }
     
     throw new Error(msg);
