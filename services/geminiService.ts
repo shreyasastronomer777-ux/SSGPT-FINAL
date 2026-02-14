@@ -11,13 +11,13 @@ const handleApiError = (error: any, context: string) => {
         throw new Error("Content flagged by safety filters. This usually happens when topics are sensitive or inappropriate for academic content. Please adjust your prompt.");
     }
     if (message.includes("API key not found") || message.includes("API_KEY")) {
-        throw new Error("API Key issue detected. Please check your service configuration.");
+        throw new Error("API Key issue detected. Please ensure your environment is correctly configured.");
     }
     if (message.includes("Quota") || message.includes("429")) {
         throw new Error("API Rate limit exceeded. Please wait a moment before trying again.");
     }
     
-    throw new Error(`AI Generation Failed during ${context}: ${message || 'Unknown Error'}`);
+    throw new Error(`AI Generation Failed (${context}): ${message || 'Check connection and API status.'}`);
 };
 
 const parseAiJson = (text: string | undefined) => {
@@ -57,7 +57,7 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     Use LaTeX for all math symbols with double backslashes in the strings.`;
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -72,7 +72,8 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceFiles, modelQuality } = formData;
     
-    const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+    // User requested: flash generation means 2.5 flash gemini and pro mean s2.5 pro gemini
+    const modelToUse = modelQuality === 'pro' ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
 
     const finalPrompt = `
 You are an expert Academic Examiner. Create a professional assessment in **${language}**.
@@ -162,7 +163,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("API Configuration Missing.");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai.chats.create({
-        model: "gemini-3-pro-preview",
+        model: "gemini-2.5-pro",
         config: {
             systemInstruction: `You are an Academic Editor. Use professional LaTeX formatting ($...$) with double backslashes in all JSON or text responses.`
         }
@@ -212,7 +213,7 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: `Analyze the following exam text into structured academic JSON. Use LaTeX with double backslashes. Text: ${text}`,
             config: { responseMimeType: "application/json" }
         });
@@ -228,7 +229,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: { parts: [...imageParts, { text: "Perform OCR on these handwritten questions and format them into structured academic JSON. Use LaTeX with double backslashes." }] },
             config: { responseMimeType: "application/json" }
         });

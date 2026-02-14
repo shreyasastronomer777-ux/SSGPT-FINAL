@@ -66,7 +66,7 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ textToAnalyze, imagesTo
         setStatus('collecting');
       } catch (e) {
         console.error("Analysis Error:", e);
-        setErrorMessage("Internal Error Occurred");
+        setErrorMessage((e as Error).message || "An error occurred during analysis.");
         setStatus('error');
       }
     };

@@ -1,5 +1,6 @@
+import { type Part } from '@google/genai';
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, Part, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Chat, FunctionDeclaration, Type, LiveServerMessage, Modality, Blob, GenerateContentResponse } from "@google/genai";
 import { type FormData, QuestionType, Difficulty, Taxonomy, type VoiceOption } from '../types';
 import { generateChatResponseStream, generateTextToSpeech } from '../services/geminiService';
 import { SpinnerIcon } from './icons/SpinnerIcon';
@@ -13,11 +14,11 @@ import { SSGPT_LOGO_URL } from '../constants';
 type Message = { id: string; sender: 'bot' | 'user'; text: string; grounding?: any[] };
 const SendIcon = (props: any) => ( <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" {...props}><path d="M3.4 20.4l17.45-7.48c.81-.35.81-1.49 0-1.84L3.4 3.6c-.66-.29-1.39.2-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"></path></svg>);
 
-const systemInstruction = `You are SSGPT. Help educators create exams. 
-STRICT MATH: For any mathematical content, symbols (like multiply/divide), or formulas, you MUST use LaTeX wrapped in $ delimiters. 
+const systemInstruction = `You are SSGPT, an expert Academic Assistant. 
+STRICT MATH: For any mathematical content, symbols (like multiply/divide), or formulas, you MUST use LaTeX wrapped in $ delimiters for inline and $$ for display. 
 Example: "Calculate $5 \\times 4$". 
-ALWAYS use double backslashes for commands in your thoughts. 
-NEVER use plain text math. Call 'generatePaper' when all details are ready.`;
+ALWAYS use double backslashes for commands. 
+NEVER use plain text for fractions, powers, or roots. Call 'generatePaper' when all exam details are ready.`;
 
 const generatePaperTool: FunctionDeclaration = { 
   name: 'generatePaper', 
@@ -35,7 +36,8 @@ const generatePaperTool: FunctionDeclaration = {
 
 const MessageBubble = memo(({ message }: { message: Message }) => {
     const bubbleRef = useRef<HTMLDivElement>(null);
-    useEffect(() => {
+    
+    const triggerMath = useCallback(() => {
         if (bubbleRef.current && (window as any).renderMathInElement) {
             try {
                 (window as any).renderMathInElement(bubbleRef.current, { 
@@ -51,13 +53,15 @@ const MessageBubble = memo(({ message }: { message: Message }) => {
                 console.warn("Math rendering failed in bubble", err);
             }
         }
-    }, [message.text]);
+    }, []);
+
+    useEffect(() => { triggerMath(); }, [message.text, triggerMath]);
 
     return (
         <div className={`flex items-start gap-3 w-full ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {message.sender === 'bot' && <img src={SSGPT_LOGO_URL} alt="AI" className="w-8 h-8 rounded-full flex-shrink-0" />}
-            <div ref={bubbleRef} className={`px-4 py-3 rounded-2xl max-w-xl shadow-md border ${message.sender === 'bot' ? 'bg-white dark:bg-slate-800' : 'bg-green-100 dark:bg-green-900/40 text-slate-800 dark:text-slate-200'}`}>
-                <div className="prose-chat text-sm" dangerouslySetInnerHTML={{ __html: message.text.replace(/\n/g, '<br/>') }} />
+            {message.sender === 'bot' && <img src={SSGPT_LOGO_URL} alt="AI" className="w-8 h-8 rounded-full flex-shrink-0 shadow-sm border border-slate-200 dark:border-slate-700" />}
+            <div ref={bubbleRef} className={`px-4 py-3 rounded-2xl max-w-[85%] md:max-w-xl shadow-sm border transition-all duration-300 ${message.sender === 'bot' ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-bl-none' : 'bg-indigo-600 text-white border-indigo-500 rounded-br-none'}`}>
+                <div className="prose-chat text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: message.text.replace(/\n/g, '<br/>') }} />
             </div>
         </div>
     );
@@ -84,7 +88,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     if (!process.env.API_KEY) return;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     setChat(ai.chats.create({ 
-        model: 'gemini-3-flash-preview', 
+        model: 'gemini-2.5-flash', 
         config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } 
     }));
     outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -94,7 +98,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isBotTyping || !chat) return;
-    setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'user', text }]);
+    const userMsgId = Date.now().toString();
+    setMessages(prev => [...prev, { id: userMsgId, sender: 'user', text }]);
     setUserInput('');
     setIsBotTyping(true);
     try {
@@ -111,8 +116,10 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
             onGenerate(chunk.functionCalls[0].args as FormData);
         }
       }
-    } catch (e) { console.error(e); }
-    finally { setIsBotTyping(false); }
+    } catch (e) { 
+        console.error(e);
+        setMessages(prev => [...prev, { id: `err-${Date.now()}`, sender: 'bot', text: "I encountered an error. Please try again or check your configuration." }]);
+    } finally { setIsBotTyping(false); }
   };
 
   const startLiveSession = async (voice: VoiceOption) => {
@@ -165,7 +172,11 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
               endLiveSession();
           }
         },
-        onclose: () => { stream.getTracks().forEach(t => t.stop()); inputCtx.close(); setIsLiveSessionActive(false); }
+        onclose: () => { 
+            stream.getTracks().forEach(t => t.stop()); 
+            inputCtx.close(); 
+            setIsLiveSessionActive(false); 
+        }
       },
       config: { 
         responseModalities: [Modality.AUDIO], 
@@ -210,49 +221,65 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
                 setUserInput(p => p + m.serverContent!.inputTranscription!.text); 
               }
             },
-            onclose: () => { stream.getTracks().forEach(t => t.stop()); inputCtx.close(); setIsDictating(false); }
+            onclose: () => { 
+                stream.getTracks().forEach(t => t.stop()); 
+                inputCtx.close(); 
+                setIsDictating(false); 
+            }
         },
-        config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, systemInstruction: "Transcribe user audio into text accurately. Do not speak." }
+        config: { 
+            responseModalities: [Modality.AUDIO], 
+            inputAudioTranscription: {}, 
+            systemInstruction: "Transcribe user audio into text accurately. Provide no spoken response." 
+        }
     });
   };
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-black overflow-hidden relative">
       <div className="flex-1 p-4 overflow-y-auto space-y-6 chat-scrollbar">
-        <div className="max-w-3xl mx-auto w-full space-y-6">
+        <div className="max-w-4xl mx-auto w-full space-y-6 pt-4">
           {messages.map(m => <MessageBubble key={m.id} message={m} />)}
-          {isBotTyping && <div className="animate-pulse text-slate-400 text-xs pl-12 font-semibold">SSGPT is crafting a response...</div>}
+          {isBotTyping && <div className="animate-pulse text-slate-400 text-xs pl-12 font-bold uppercase tracking-widest">SSGPT is crafting a response...</div>}
         </div>
         <div ref={messagesEndRef} />
       </div>
-      <div className="p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800 shadow-2xl">
-        <div className="max-w-3xl mx-auto flex gap-3">
-          <input 
-            value={userInput} 
-            onChange={e => setUserInput(e.target.value)} 
-            onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} 
-            placeholder="Type your exam requirements..." 
-            className="flex-1 p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:border-indigo-500 outline-none transition-all" 
-          />
-          <div className="flex gap-2">
-            <button 
-              onClick={handleDictate} 
-              className={`p-4 rounded-2xl transition-all ${isDictating ? 'bg-red-500 text-white animate-pulse ring-4 ring-red-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`} 
-              title="Voice Dictation"
-            >
-              <MicIcon className="w-6 h-6"/>
-            </button>
+      <div className="p-6 bg-white dark:bg-slate-900 border-t dark:border-slate-800 shadow-2xl z-20">
+        <div className="max-w-4xl mx-auto flex gap-4 items-end">
+          <div className="flex-1 relative group">
+             <textarea 
+                value={userInput} 
+                onChange={e => setUserInput(e.target.value)} 
+                onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage(userInput);
+                    }
+                }} 
+                placeholder="Type your exam requirements..." 
+                className="w-full p-4 pr-14 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all resize-none min-h-[56px] max-h-32" 
+                rows={1}
+             />
+             <button 
+                onClick={handleDictate} 
+                className={`absolute right-3 bottom-3 p-2 rounded-xl transition-all ${isDictating ? 'bg-red-500 text-white animate-pulse ring-4 ring-red-500/20' : 'text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'}`} 
+                title="Dictate"
+             >
+                <MicIcon className="w-6 h-6"/>
+             </button>
+          </div>
+          <div className="flex gap-2 mb-1">
             <button 
               onClick={() => setIsVoiceModalOpen(true)} 
-              className="p-4 bg-indigo-100 text-indigo-600 rounded-2xl hover:bg-indigo-200 transition-all shadow-sm"
+              className="p-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-indigo-100 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all shadow-sm group"
               title="Voice Mode"
             >
-              <VoiceIcon className="w-6 h-6"/>
+              <VoiceIcon className="w-6 h-6 group-hover:scale-110 transition-transform"/>
             </button>
             <button 
               onClick={() => handleSendMessage(userInput)} 
               disabled={!userInput.trim() || isBotTyping}
-              className="p-4 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
+              className="p-4 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
             >
               <SendIcon className="w-6 h-6"/>
             </button>
@@ -261,26 +288,27 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       </div>
       {isVoiceModalOpen && <VoiceModeModal onClose={() => setIsVoiceModalOpen(false)} onStart={startLiveSession} />}
       {isLiveSessionActive && (
-        <div className="fixed inset-0 bg-slate-950/95 z-[100] flex flex-col items-center justify-center p-8 animate-fade-in text-center">
-          <div className="relative mb-12">
-            <div className="w-48 h-48 bg-indigo-500/20 rounded-full animate-ping absolute inset-0" />
-            <div className="w-48 h-48 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full flex items-center justify-center shadow-2xl border-8 border-white/5 relative z-10">
-                <VoiceIcon className="w-20 h-20 text-white" />
+        <div className="fixed inset-0 bg-slate-950/98 backdrop-blur-3xl z-[100] flex flex-col items-center justify-center p-8 animate-fade-in text-center">
+          <div className="relative mb-16">
+            <div className="w-56 h-56 bg-indigo-500/20 rounded-full animate-ping absolute inset-0" />
+            <div className="w-56 h-56 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full flex items-center justify-center shadow-2xl border-8 border-white/5 relative z-10">
+                <VoiceIcon className="w-24 h-24 text-white" />
             </div>
           </div>
-          <div className="max-w-md space-y-6">
-            <h3 className="text-3xl font-black text-white tracking-tight">SSGPT Voice Mode</h3>
-            <p className="text-indigo-400 text-xl font-bold italic h-8">{transcript || "Listening..."}</p>
-            <p className="text-white text-lg opacity-70 h-20 overflow-hidden line-clamp-3">{aiLiveTranscript || "The assistant will speak back to you."}</p>
+          <div className="max-w-lg space-y-8">
+            <h3 className="text-4xl font-black text-white tracking-tight uppercase">Voice Active</h3>
+            <div className="space-y-4">
+                <p className="text-indigo-400 text-2xl font-bold italic h-10 line-clamp-1">{transcript || "Listening closely..."}</p>
+                <p className="text-slate-400 text-xl font-medium h-24 overflow-hidden leading-relaxed">{aiLiveTranscript || "The assistant is ready to chat."}</p>
+            </div>
           </div>
-          <button onClick={endLiveSession} className="mt-16 px-16 py-5 bg-red-600 text-white rounded-full font-black text-xl hover:scale-105 transition-transform shadow-xl shadow-red-900/40">End Conversation</button>
+          <button onClick={endLiveSession} className="mt-20 px-16 py-5 bg-red-600 text-white rounded-full font-black text-2xl hover:scale-105 hover:bg-red-700 transition-all shadow-2xl shadow-red-900/40">End Conversation</button>
         </div>
       )}
     </div>
   );
 };
 
-// Encoding/Decoding helpers
 const createBlob = (d: Float32Array) => { 
     const i16 = new Int16Array(d.length); 
     for(let i=0; i<d.length; i++) i16[i] = d[i]*32768; 
@@ -295,7 +323,7 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, rate: number
     const buf = ctx.createBuffer(ch, i16.length/ch, rate); 
     for(let c=0; c<ch; c++) { 
         const d = buf.getChannelData(c); 
-        for(let i=0; i<d.length; i++) d[i] = i16[i*ch+c]/32768.0; 
+        for(let i=0; i<i16.length/ch; i++) d[i] = i16[i*ch+c]/32768.0; 
     } 
     return buf; 
 }
