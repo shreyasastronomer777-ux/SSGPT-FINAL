@@ -13,20 +13,16 @@ const handleApiError = (error: any, context: string) => {
 
 const parseAiJson = (text: string) => {
     try {
-        // Find JSON block if AI provided surrounding text
         const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
-        let cleanedText = jsonMatch ? jsonMatch[1] : text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const cleanedText = jsonMatch ? jsonMatch[1] : text.replace(/```json/g, '').replace(/```/g, '').trim();
         
-        // CRITICAL FIX: The AI often outputs single backslashes in JSON strings for LaTeX commands
-        // which makes JSON.parse fail or interpret them as tabs/newlines.
-        // We look for common LaTeX commands that often break: \times, \frac, \sqrt, \pm, \div
-        // Note: We only replace if they are NOT already escaped.
+        // Final sanity check for common LaTeX JSON escape errors
         const sanitized = cleanedText
-            .replace(/(?<!\\)\\times/g, '\\\\times')
-            .replace(/(?<!\\)\\frac/g, '\\\\frac')
-            .replace(/(?<!\\)\\sqrt/g, '\\\\sqrt')
-            .replace(/(?<!\\)\\pm/g, '\\\\pm')
-            .replace(/(?<!\\)\\div/g, '\\\\div');
+            .replace(/\\times/g, '\\\\times')
+            .replace(/\\frac/g, '\\\\frac')
+            .replace(/\\sqrt/g, '\\\\sqrt')
+            .replace(/\\pm/g, '\\\\pm')
+            .replace(/\\div/g, '\\\\div');
 
         return JSON.parse(sanitized);
     } catch (e) {
@@ -35,7 +31,7 @@ const parseAiJson = (text: string) => {
             const simpleClean = text.replace(/```json/g, '').replace(/```/g, '').trim();
             return JSON.parse(simpleClean);
         } catch (innerE) {
-            throw new Error("Invalid response format from AI. The generated math formatting was too complex for the parser.");
+            throw new Error("Invalid response format from AI.");
         }
     }
 };
@@ -72,7 +68,7 @@ You are a Senior Academic Examiner. Create a professional assessment in **${lang
 1. **DIVERSITY:** You MUST generate the EXACT quantity of questions for EVERY type specified in the Structure. Do NOT default to MCQs.
 2. **LATEX (CRITICAL):** Use professional LaTeX for ALL mathematical symbols, fractions, powers, and roots. Wrap math in $...$. 
    CRITICAL FOR JSON: In the JSON string, always use DOUBLE backslashes for commands. 
-   Example: "$\\frac{a}{b}$" must be written as "$\\\\frac{a}{b}$" in the JSON raw string. NEVER use single backslashes like "\\times" as they break JSON parsing by appearing as tab characters.
+   Example: "$\\frac{a}{b}$" must be written as "$\\\\frac{a}{b}$". NEVER use single backslashes like "\\times" as they break JSON parsing.
 3. **TYPE RULES:** 
    - Match the Following: Options MUST be a JSON object {columnA: [], columnB: []}.
    - Fill in Blanks: Use "_______" (exactly 7 underscores) for blanks.
@@ -148,7 +144,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `Academic Editor. Use professional LaTeX formatting ($...$) with double backslashes in JSON responses to avoid parsing errors.`
+            systemInstruction: `Academic Editor. Use professional LaTeX formatting ($...$) with double backslashes in JSON responses.`
         }
     });
 };

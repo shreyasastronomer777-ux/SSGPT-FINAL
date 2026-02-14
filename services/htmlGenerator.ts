@@ -29,15 +29,15 @@ const toRoman = (num: number): string => {
 const renderOptions = (question: Question): string => {
     if (question.type === QuestionType.MultipleChoice && Array.isArray(question.options)) {
         const options = question.options as string[];
-        // Massive line-height (3.8) specifically for tall math clearance in options
-        return `<table style="width: 100%; border-collapse: collapse; margin-top: 25px; table-layout: fixed; font-family: inherit; break-inside: avoid;"><tbody>
+        // High line-height (3.4) for option text to clear tall math symbols like tall fractions
+        return `<table style="width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; font-family: inherit; break-inside: avoid;"><tbody>
                 <tr>
-                    <td style="width: 50%; vertical-align: top; padding: 20px 15px 20px 0; font-size: 1.15em; line-height: 3.8;">(a) ${formatText(options[0])}</td>
-                    <td style="width: 50%; vertical-align: top; padding: 20px 0 20px 15px; font-size: 1.15em; line-height: 3.8;">(b) ${formatText(options[1])}</td>
+                    <td style="width: 50%; vertical-align: top; padding: 18px 12px 18px 0; font-size: 1.1em; line-height: 3.4;">(a) ${formatText(options[0])}</td>
+                    <td style="width: 50%; vertical-align: top; padding: 18px 0 18px 12px; font-size: 1.1em; line-height: 3.4;">(b) ${formatText(options[1])}</td>
                 </tr>
                 <tr>
-                    <td style="width: 50%; vertical-align: top; padding: 20px 15px 20px 0; font-size: 1.15em; line-height: 3.8;">(c) ${formatText(options[2])}</td>
-                    <td style="width: 50%; vertical-align: top; padding: 20px 0 20px 15px; font-size: 1.15em; line-height: 3.8;">(d) ${formatText(options[3])}</td>
+                    <td style="width: 50%; vertical-align: top; padding: 18px 12px 18px 0; font-size: 1.1em; line-height: 3.4;">(c) ${formatText(options[2])}</td>
+                    <td style="width: 50%; vertical-align: top; padding: 18px 0 18px 12px; font-size: 1.1em; line-height: 3.4;">(d) ${formatText(options[3])}</td>
                 </tr>
             </tbody></table>`;
     } else if (question.type === QuestionType.MatchTheFollowing) {
@@ -57,16 +57,16 @@ const renderOptions = (question: Question): string => {
         
         const rows = colA.map((item, index) => `
             <tr>
-                <td style="padding: 20px 25px; border: 1.5px solid #000; width: 50%; vertical-align: middle; line-height: 3.0;">(${toRoman(index + 1).toLowerCase()}) ${formatText(item)}</td>
-                <td style="padding: 20px 25px; border: 1.5px solid #000; width: 50%; vertical-align: middle; line-height: 3.0;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
+                <td style="padding: 18px 20px; border: 1px solid #000; width: 50%; vertical-align: middle; line-height: 2.8;">(${toRoman(index + 1).toLowerCase()}) ${formatText(item)}</td>
+                <td style="padding: 18px 20px; border: 1px solid #000; width: 50%; vertical-align: middle; line-height: 2.8;">${colB[index] ? `(${String.fromCharCode(97 + index)}) ${formatText(colB[index])}` : ''}</td>
             </tr>
         `).join('');
 
-        return `<table style="width: 100%; border-collapse: collapse; margin-top: 30px; border: 2.5px solid #000; background-color: #fff; break-inside: avoid; table-layout: fixed;">
+        return `<table style="width: 100%; border-collapse: collapse; margin-top: 25px; border: 2px solid #000; background-color: #fff; break-inside: avoid; table-layout: fixed;">
                 <thead>
-                    <tr style="text-align: left; background-color: #f3f4f6; border-bottom: 2.5px solid #000;">
-                        <th style="padding: 20px 25px; border: 1.5px solid #000; font-weight: 800; text-transform: uppercase; font-size: 0.95em; letter-spacing: 0.5px;">Column A</th>
-                        <th style="padding: 20px 25px; border: 1.5px solid #000; font-weight: 800; text-transform: uppercase; font-size: 0.95em; letter-spacing: 0.5px;">Column B</th>
+                    <tr style="text-align: left; background-color: #f8fafc; border-bottom: 2px solid #000;">
+                        <th style="padding: 15px 20px; border: 1px solid #000; font-weight: 800; text-transform: uppercase; font-size: 0.9em; letter-spacing: 0.5px;">Column A</th>
+                        <th style="padding: 15px 20px; border: 1px solid #000; font-weight: 800; text-transform: uppercase; font-size: 0.9em; letter-spacing: 0.5px;">Column B</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -84,25 +84,25 @@ const renderQuestion = (question: Question, isAnswerKey: boolean): string => {
         answerText = String(question.answer || '');
     }
     const answerHtml = isAnswerKey ? `
-        <div style="margin-top: 25px; padding: 20px; background-color: #f9fafb; border-left: 6px solid #4f46e5; border-radius: 8px; font-size: 1.2em; break-inside: avoid;">
-            <strong style="color: #4f46e5; text-transform: uppercase; font-size: 0.8em; display: block; margin-bottom: 10px; letter-spacing: 1.5px;">Marking Scheme:</strong>
-            <div style="line-height: 2.8; font-weight: 600;">${formatText(answerText)}</div>
+        <div style="margin-top: 20px; padding: 18px; background-color: #f9fafb; border-left: 5px solid #4f46e5; border-radius: 6px; font-size: 1.15em; break-inside: avoid;">
+            <strong style="color: #4f46e5; text-transform: uppercase; font-size: 0.75em; display: block; margin-bottom: 5px; letter-spacing: 1px;">Marking Scheme:</strong>
+            <div style="line-height: 2.2; font-weight: 600;">${formatText(answerText)}</div>
         </div>
     ` : '';
 
-    // Standard question block with extreme line-height (4.2) for complex math safety
-    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 5rem; width: 100%; overflow: visible; display: block;">
+    // Standard question block with high line-height (3.8) for vertical math clearance
+    return `<div class="question-block" style="break-inside: avoid; page-break-inside: avoid; margin-bottom: 4rem; width: 100%; overflow: visible; display: block;">
             <table style="width: 100%; border-collapse: collapse; break-inside: avoid;">
                 <tbody>
                     <tr>
-                        <td style="vertical-align: top; width: 55px; font-weight: 700; font-size: 1.35em; line-height: 4.2;">${question.questionNumber}.</td>
-                        <td style="vertical-align: top; text-align: left; line-height: 4.2; font-size: 1.35em; padding-right: 25px; padding-bottom: 15px;">${formatText(question.questionText)}</td>
-                        <td style="vertical-align: top; text-align: right; width: 110px; font-weight: 700; font-size: 1.35em; line-height: 4.2;">[${question.marks} M]</td>
+                        <td style="vertical-align: top; width: 45px; font-weight: 700; font-size: 1.25em; line-height: 3.8;">${question.questionNumber}.</td>
+                        <td style="vertical-align: top; text-align: left; line-height: 3.8; font-size: 1.25em; padding-right: 15px; padding-bottom: 12px;">${formatText(question.questionText)}</td>
+                        <td style="vertical-align: top; text-align: right; width: 90px; font-weight: 700; font-size: 1.25em; line-height: 3.8;">[${question.marks} M]</td>
                     </tr>
                 </tbody>
             </table>
-            ${optionsHtml ? `<div style="padding-left: 55px; overflow: visible;">${optionsHtml}</div>` : ''}
-            ${answerHtml ? `<div style="padding-left: 55px; overflow: visible;">${answerHtml}</div>` : ''}
+            ${optionsHtml ? `<div style="padding-left: 45px; overflow: visible;">${optionsHtml}</div>` : ''}
+            ${answerHtml ? `<div style="padding-left: 45px; overflow: visible;">${answerHtml}</div>` : ''}
         </div>`;
 };
 
@@ -114,22 +114,23 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
     let contentHtml = '';
 
     const logoSrc = options?.logoConfig?.src;
-    const logoImgTag = logoSrc ? `<div style="text-align: center;"><img src="${logoSrc}" alt="Logo" style="max-height: 120px; margin-bottom: 35px; display: inline-block;" /></div>` : '';
+    const logoImgTag = logoSrc ? `<div style="text-align: center;"><img src="${logoSrc}" alt="Logo" style="max-height: 90px; margin-bottom: 25px; display: inline-block;" /></div>` : '';
     
+    // Cleaner, more academic heading
     contentHtml += `
-        <div style="text-align: center; width: 100%; margin-bottom: 60px; break-inside: avoid;">
+        <div style="text-align: center; width: 100%; margin-bottom: 50px; break-inside: avoid;">
             ${logoImgTag}
-            <h1 style="margin: 0; font-size: 44px; font-weight: 900; text-transform: uppercase; color: #000; letter-spacing: 3px; line-height: 1.3;">${escapeHtml(paperData.schoolName)}</h1>
-            <h2 style="margin: 25px 0; font-size: 34px; text-decoration: underline; font-weight: 800; color: #000;">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - SOLUTIONS' : ''}</h2>
-            <p style="margin: 15px 0; font-weight: 700; font-size: 1.7em;">Grade: ${escapeHtml(paperData.className)}</p>
-            <hr style="border: 0; border-top: 6px solid #000; margin-top: 40px;">
-            <table style="width: 100%; margin: 25px 0; font-weight: 800; font-size: 1.6em; border-collapse: collapse;">
+            <h1 style="margin: 0; font-size: 32px; font-weight: 800; text-transform: uppercase; color: #000; letter-spacing: 1.5px; line-height: 1.2;">${escapeHtml(paperData.schoolName)}</h1>
+            <h2 style="margin: 15px 0; font-size: 24px; text-decoration: underline; font-weight: 700; color: #000;">${escapeHtml(paperData.subject)}${isAnswerKey ? ' - SOLUTIONS' : ''}</h2>
+            <p style="margin: 10px 0; font-weight: 600; font-size: 1.4em;">GRADE: ${escapeHtml(paperData.className)}</p>
+            <hr style="border: 0; border-top: 3px solid #000; margin-top: 25px;">
+            <table style="width: 100%; margin: 15px 0; font-weight: 700; font-size: 1.3em; border-collapse: collapse;">
                 <tr>
-                    <td style="text-align: left;">Time Allowed: ${escapeHtml(paperData.timeAllowed)}</td>
-                    <td style="text-align: right;">Total Marks: ${escapeHtml(paperData.totalMarks)}</td>
+                    <td style="text-align: left;">TIME: ${escapeHtml(paperData.timeAllowed)}</td>
+                    <td style="text-align: right;">TOTAL MARKS: ${escapeHtml(paperData.totalMarks)}</td>
                 </tr>
             </table>
-            <hr style="border: 0; border-top: 5px solid #000; margin-bottom: 80px;">
+            <hr style="border: 0; border-top: 2px solid #000; margin-bottom: 60px;">
         </div>
     `;
 
@@ -139,10 +140,10 @@ export const generateHtmlFromPaperData = (paperData: QuestionPaperData, options?
         sectionCount++;
         const sectionTotal = qs.reduce((acc, q) => acc + q.marks, 0);
         contentHtml += `
-            <div style="text-align: center; margin: 90px 0 50px; font-weight: 800; text-transform: uppercase; text-decoration: underline; font-size: 2.5em; break-inside: avoid;">Section ${String.fromCharCode(64 + sectionCount)}</div>
-            <div style="display: flex; justify-content: space-between; border-bottom: 5px solid #000; padding-bottom: 15px; margin-bottom: 70px; font-weight: 800; break-inside: avoid;">
-                <span style="font-size: 1.8em;">${toRoman(sectionCount)}. ${type} Questions</span>
-                <span style="font-size: 1.6em;">[${qs.length} &times; ${qs[0].marks} = ${sectionTotal} Marks]</span>
+            <div style="text-align: center; margin: 60px 0 35px; font-weight: 800; text-transform: uppercase; text-decoration: underline; font-size: 1.8em; break-inside: avoid;">Section ${String.fromCharCode(64 + sectionCount)}</div>
+            <div style="display: flex; justify-content: space-between; border-bottom: 3px solid #000; padding-bottom: 10px; margin-bottom: 45px; font-weight: 700; break-inside: avoid;">
+                <span style="font-size: 1.4em;">${toRoman(sectionCount)}. ${type} Questions</span>
+                <span style="font-size: 1.3em;">[${qs.length} &times; ${qs[0].marks} = ${sectionTotal} Marks]</span>
             </div>
         `;
         qs.forEach(q => {
