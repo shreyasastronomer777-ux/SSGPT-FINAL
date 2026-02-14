@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { type Part } from '@google/genai';
 import { analyzePastedText, analyzeHandwrittenImages } from '../services/geminiService';
@@ -66,7 +67,24 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ textToAnalyze, imagesTo
         setStatus('collecting');
       } catch (e) {
         console.error("Analysis Error:", e);
-        setErrorMessage((e as Error).message || "An error occurred during analysis.");
+        let friendlyMessage = "An unknown error occurred during analysis. Please try again.";
+        if (e instanceof Error) {
+            const errorString = e.toString();
+            if (errorString.includes("API_KEY environment variable not set")) {
+                friendlyMessage = "The Gemini API Key is not configured. If you're running this on a hosting service like Vercel, please ensure the API_KEY environment variable is correctly set in your project's settings.";
+            } else if (errorString.includes("API_KEY_SERVICE_BLOCKED")) {
+                friendlyMessage = "The request was blocked due to API key restrictions. Please visit the Google Cloud Console and ensure that:\n1. Your API key has the 'Generative Language API' enabled in its API restrictions.\n2. If you have application restrictions (e.g., for websites), ensure this domain is on the allowed list.";
+            } else if (errorString.includes("SERVICE_DISABLED") || (errorString.includes("PERMISSION_DENIED") && errorString.includes("generativelanguage.googleapis.com"))) {
+                const match = errorString.match(/project(?:[=\s])([\d]+)/);
+                const projectId = match ? match[1] : 'your-project';
+                friendlyMessage = `The Generative AI service has not been enabled for this project. Please enable the "Generative Language API" in your Google Cloud Console for project ${projectId} and try again. You can visit https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview?project=${projectId} to enable it.`;
+            } else if (errorString.includes("400") || errorString.toLowerCase().includes("api key not valid")) {
+                friendlyMessage = "Analysis failed. This might be due to an invalid API key, or your domain is not authorized to use it. Please verify your Gemini API key and its restrictions in Google AI Studio.";
+            } else {
+                friendlyMessage = e.message;
+            }
+        }
+        setErrorMessage(friendlyMessage);
         setStatus('error');
       }
     };
@@ -137,7 +155,7 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ textToAnalyze, imagesTo
         timeAllowed: finalMetadata.timeAllowed || '',
         totalMarks: String(finalMetadata.totalMarks || calculatedTotalMarks),
         questions: processedQuestions,
-        htmlContent: '', 
+        htmlContent: '', // Will be generated next
         createdAt: new Date().toISOString(),
     };
 
@@ -164,7 +182,7 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ textToAnalyze, imagesTo
   if (status === 'error') {
     return (
         <div className="text-center mt-20 max-w-lg mx-auto p-8 bg-white dark:bg-slate-800 rounded-xl shadow-xl border dark:border-slate-700 animate-fade-in-up">
-          <h3 className="text-xl font-semibold text-red-500 mb-4">Operation Failed</h3>
+          <h3 className="text-xl font-semibold text-red-500 mb-4">Analysis Failed</h3>
           <p className="text-slate-600 dark:text-slate-400 mb-6 whitespace-pre-wrap">{errorMessage}</p>
           <button
             onClick={onCancel}

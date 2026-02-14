@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { type Part } from '@google/genai';
 import GeneratorForm from './components/GeneratorForm';
@@ -7,7 +8,7 @@ import ChatbotInterface from './components/ChatbotInterface';
 import MyPapers from './components/MyPapers';
 import Settings from './components/Settings';
 import { type FormData, type QuestionPaperData, type User, type Page, type Theme, UploadedImage } from './types';
-import { generateQuestionPaper } from './services/geminiService';
+import { generateQuestionPaper, RateLimitError } from './services/geminiService';
 import { generateHtmlFromPaperData } from './services/htmlGenerator';
 import { authService } from './services/authService';
 import PublicLandingPage from './components/PublicLandingPage';
@@ -31,6 +32,7 @@ function App() {
   const [theme, setTheme] = useState<Theme>('light');
   const [page, setPage] = useState<Page>('teacherDashboard');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isQueued, setIsQueued] = useState<boolean>(false);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activePaper, setActivePaper] = useState<QuestionPaperData | null>(null);
@@ -43,6 +45,7 @@ function App() {
   const [imagesToAnalyze, setImagesToAnalyze] = useState<Part[] | null>(null);
   const [publicPaper, setPublicPaper] = useState<QuestionPaperData | null>(null);
   
+  // New State for Image Editor
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
 
   useEffect(() => {
@@ -63,7 +66,7 @@ function App() {
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         } catch (error) {
           console.error("Failed to load paper from URL hash:", error);
-          setError("Failed to load the shared paper. The link might be broken.");
+          alert("The shared paper link is invalid or corrupted.");
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         }
       }
@@ -130,23 +133,40 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
-  const executeGeneration = async (action: () => Promise<void>) => {
+  // Wrapper to handle retry logic
+  const executeGeneration = async (action: () => Promise<void>, retryContext: any) => {
       setIsLoading(true);
       setError(null);
+      setIsQueued(false);
+      let wasRateLimited = false;
 
       try {
           await action();
-      } catch (e: any) {
-          console.error(e);
-          setError(e.message || 'An unexpected error occurred during generation.');
+      } catch (e) {
+          if (e instanceof RateLimitError) {
+              console.warn("Rate limited, queueing...", e.message);
+              setIsQueued(true);
+              wasRateLimited = true;
+              // Auto-retry after 2 minutes (120000ms)
+              setTimeout(() => {
+                  executeGeneration(action, retryContext);
+              }, 120000);
+          } else {
+              console.error(e);
+              let errorMessage = 'An unknown error occurred. Please try again.';
+              if (e instanceof Error) errorMessage = e.message;
+              setError(errorMessage);
+          }
       } finally {
-          setIsLoading(false);
+          // Only turn off loading if we are NOT queued/retrying
+          if (!wasRateLimited) {
+             setIsLoading(false);
+          }
       }
   };
 
   const handleGenerate = useCallback((formData: FormData) => {
     setActivePaper(null);
-    setEditorReady(false);
     
     executeGeneration(async () => {
         const paper = await generateQuestionPaper(formData);
@@ -161,14 +181,14 @@ function App() {
             setPapers(authService.getPapers());
         }
         setPage('edit');
-    });
+    }, { type: 'generate', data: formData });
 
   }, [currentUser]);
 
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
+    // Analysis usually happens in a sub-component, but we handle the transition here
     setIsLoading(true);
     setError(null);
-    setEditorReady(false);
 
     const finalPaper: QuestionPaperData = {
         ...paper,
@@ -198,13 +218,11 @@ function App() {
   
   const handleExitEditor = () => {
       setActivePaper(null);
-      setEditorReady(false);
       setPage(currentUser?.role === 'teacher' ? 'myPapers' : 'studentDashboard');
   };
   
   const handleEditPaper = (paper: QuestionPaperData) => {
       setActivePaper(paper);
-      setEditorReady(false);
       setPage('edit');
   };
   
@@ -242,7 +260,7 @@ function App() {
 
     const handleStudentViewPaperFromUrl = (url: string) => {
         if (!url.includes('#paper/')) {
-            setError("The pasted link does not seem to contain a valid SSGPT paper.");
+            alert("Invalid SSGPT paper link. Please paste the full link.");
             return;
         }
         try {
@@ -255,17 +273,15 @@ function App() {
             authService.saveAttendedPaper(paperData);
             setAttendedPapers(authService.getAttendedPapers());
             setActivePaper(paperData);
-            setEditorReady(false);
             setPage('edit');
         } catch (e) {
             console.error("Failed to process pasted link:", e);
-            setError("Failed to decode the paper link. It might be corrupted.");
+            alert("The provided paper link is invalid or corrupted.");
         }
     };
     
     const handleViewAttendedPaper = (paper: QuestionPaperData) => {
         setActivePaper(paper);
-        setEditorReady(false);
         setPage('edit');
     };
     
@@ -299,21 +315,7 @@ function App() {
     handleNavigate('analyze');
   };
   
-  const editorRef = useRef<any>(null);
-
-  // Force re-render of computed actions by checking both the ready state and ref current
-  const editorActions = (page === 'edit' && (isEditorReady || editorRef.current)) ? {
-      onSaveAndExit: editorRef.current?.handleSaveAndExitClick,
-      onExport: editorRef.current?.openExportModal,
-      onAnswerKey: editorRef.current?.openAnswerKeyModal,
-      isSaving: editorRef.current?.isSaving,
-      paperSubject: activePaper?.subject,
-      undo: editorRef.current?.undo,
-      redo: editorRef.current?.redo,
-      canUndo: editorRef.current?.canUndo,
-      canRedo: editorRef.current?.canRedo,
-      isAnswerKeyMode: editorRef.current?.isAnswerKeyMode
-  } : undefined;
+  const editorRef = React.useRef<any>(null);
 
   if (isAuthLoading) {
     return (
@@ -338,13 +340,14 @@ function App() {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
+  // Handle the Pro Image Editor Modal
   if (selectedImageForEdit) {
       return <ProImageEditor image={selectedImageForEdit} onClose={() => setSelectedImageForEdit(null)} />;
   }
 
   const renderContent = () => {
     if (isLoading) {
-        return <div className="flex items-center justify-center flex-1"><Loader /></div>;
+        return <div className="flex items-center justify-center flex-1"><Loader isQueued={isQueued} /></div>;
     }
     if (error) {
       return (
@@ -352,30 +355,21 @@ function App() {
           <div className="text-center max-w-lg mx-auto p-8 bg-white dark:bg-slate-800 rounded-xl shadow-xl border dark:border-slate-700 animate-fade-in-up">
             <h3 className="text-xl font-semibold text-red-500 mb-4">Operation Failed</h3>
             <p className="text-slate-600 dark:text-slate-400 mb-6 whitespace-pre-wrap">{error}</p>
-            <div className="flex flex-col gap-3">
-                <button
-                onClick={() => {
-                    setError(null);
-                    handleNavigate(currentUser.role === 'teacher' ? 'creationHub' : 'practice');
-                }}
-                className="bg-indigo-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition-colors shadow-md"
-                >
-                Try Different Method
-                </button>
-                <button
-                onClick={() => {
-                    window.location.reload();
-                }}
-                className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-medium text-sm"
-                >
-                Reload Application
-                </button>
-            </div>
+            <button
+              onClick={() => {
+                setError(null);
+                handleNavigate(currentUser.role === 'teacher' ? 'generate' : 'practice');
+              }}
+              className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700"
+            >
+              Try Again
+            </button>
           </div>
         </div>
       );
     }
     
+    // Teacher pages
     if(currentUser.role === 'teacher') {
         switch (page) {
           case 'teacherDashboard':
@@ -406,6 +400,7 @@ function App() {
         }
     }
     
+    // Student pages
     if(currentUser.role === 'student') {
         switch (page) {
             case 'studentDashboard':
@@ -430,6 +425,19 @@ function App() {
     
     return <div>Invalid user role.</div>
   };
+
+  const editorActions = (page === 'edit' && editorRef.current) ? {
+      onSaveAndExit: editorRef.current.handleSaveAndExitClick,
+      onExport: editorRef.current.openExportModal,
+      onAnswerKey: editorRef.current.openAnswerKeyModal,
+      isSaving: editorRef.current.isSaving,
+      paperSubject: activePaper?.subject,
+      undo: editorRef.current.undo,
+      redo: editorRef.current.redo,
+      canUndo: editorRef.current.canUndo,
+      canRedo: editorRef.current.canRedo,
+      isAnswerKeyMode: editorRef.current.isAnswerKeyMode
+  } : undefined;
 
   const isEditorPage = page === 'edit';
 
