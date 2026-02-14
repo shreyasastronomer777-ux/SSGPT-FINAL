@@ -99,18 +99,25 @@
     }
     
     /* STANDARD PROFESSIONAL KATEX STYLING */
-    /* Restore default layout mechanisms for correct geometry */
+    /* Ensure sufficient vertical space for fractions */
     .katex {
-        font-size: 1.1em !important;
+        font-size: 1.15em !important;
+        line-height: 1.6 !important;
         text-indent: 0;
+        white-space: normal !important; 
     }
     
-    /* Add vertical breathing room for display math */
+    /* Display math (centered equations) needs room above/below */
     .katex-display {
-        margin: 1em 0 !important;
+        margin: 1.2em 0 !important;
         overflow-x: auto;
-        overflow-y: hidden;
-        padding: 0.5em 0;
+        overflow-y: visible !important; /* Critical for tall fractions */
+        padding: 0.2em 0;
+    }
+    
+    /* Specific fix for fraction bars hitting lines */
+    .katex .mfrac .vlist-t {
+        margin: 0.1em 0;
     }
 
     /* Prevent Collapsed Spacing in Paper View */

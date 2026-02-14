@@ -85,8 +85,8 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     if (!process.env.API_KEY) throw new Error("API Configuration Missing.");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Fix: Updated models to use Gemini 3 series for generation based on guidelines.
-    const modelToUse = formData.modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+    // Fix: Updated to Gemini 2.5 series as requested by user.
+    const modelToUse = formData.modelQuality === 'pro' ? 'gemini-2.5-pro-preview' : 'gemini-2.5-flash-preview';
 
     try {
         const response = await ai.models.generateContent({
@@ -143,9 +143,9 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
 export const createEditingChat = (paperData: QuestionPaperData) => {
     if (!process.env.API_KEY) throw new Error("API Key Missing.");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Fix: Updated to Gemini 3 Pro for complex academic editing tasks.
+    // Fix: Updated to Gemini 2.5 Pro for complex academic editing tasks.
     return ai.chats.create({
-        model: "gemini-3-pro-preview",
+        model: "gemini-2.5-pro-preview",
         config: {
             systemInstruction: "Academic Editor. Enforce $...$ delimiters and double backslashes (\\\\) for all math commands."
         }
@@ -166,9 +166,9 @@ export const generateChatResponseStream = async (chat: Chat, messageParts: Part[
 
 export const analyzePastedText = async (text: string): Promise<AnalysisResult> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Fix: Updated to Gemini 3 Flash for efficient text analysis.
+    // Fix: Updated to Gemini 2.5 Flash for efficient text analysis.
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash-preview",
         contents: `Analyze exam text into JSON. Enforce $...$ delimiters. Text: ${text}`,
         config: { responseMimeType: "application/json" }
     });
@@ -177,9 +177,9 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
 
 export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<AnalysisResult> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Fix: Updated to Gemini 3 Flash for efficient image analysis.
+    // Fix: Updated to Gemini 2.5 Flash for efficient image analysis.
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash-preview",
         contents: { parts: [...imageParts, { text: "OCR text to academic JSON. Enforce $...$ math delimiters." }] },
         config: { responseMimeType: "application/json" }
     });
@@ -212,9 +212,9 @@ export const generateImage = async (prompt: string, aspectRatio: string = "1:1")
 
 export const extractConfigFromTranscript = async (transcript: string) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Fix: Updated model to Gemini 3 Flash.
+    // Fix: Updated model to Gemini 2.5 Flash.
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash-preview",
         contents: `Extract exam config JSON from: ${transcript}. Enforce LaTeX standards.`,
         config: { responseMimeType: "application/json" }
     });
