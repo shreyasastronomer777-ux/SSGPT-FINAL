@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, FunctionDeclaration, Modality, Chat, Part, GenerateContentParameters, GenerateContentResponse } from "@google/genai";
 // Fix: Added QuestionPaperData to the import list from '../types'
 import { type FormData, type QuestionPaperData, QuestionType, Question, Difficulty, Taxonomy, AnalysisResult, QuestionDistributionItem } from '../types';
@@ -14,14 +13,28 @@ export class RateLimitError extends Error {
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    const msg = error instanceof Error ? error.message : String(error);
+    let msg = error instanceof Error ? error.message : String(error);
     
+    // Attempt to parse JSON error message if it looks like one (often from 429 responses)
+    if (msg.trim().startsWith('{')) {
+        try {
+            const parsed = JSON.parse(msg);
+            if (parsed.error && parsed.error.message) {
+                msg = parsed.error.message;
+            } else if (parsed.message) {
+                msg = parsed.message;
+            }
+        } catch (e) {
+            // Ignore parsing errors
+        }
+    }
+
     // Detect 429 or Service Unavailable or Overloaded model
-    if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Overloaded")) {
-        throw new RateLimitError("System is currently experiencing high traffic. You are in the queue.");
+    if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Overloaded")) {
+        throw new RateLimitError("System is busy (Quota Exceeded). We are retrying for you...");
     }
     
-    throw error;
+    throw new Error(msg);
 };
 
 export const extractConfigFromTranscript = async (transcript: string): Promise<any> => {
@@ -67,7 +80,7 @@ Do not explain anything. Output ONLY the JSON.
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-2.5-flash-preview",
             contents: prompt,
             config: { responseMimeType: "application/json" }
         });
@@ -113,7 +126,7 @@ ${questionRequests}
 **Instructions:**
 1.  Generate the precise number of questions for each type as specified in the "Required Question Mix".
 2.  For each question, create a JSON object with the following fields: "type", "questionText", "options", "answer", "marks", "difficulty", "taxonomy".
-3.  **questionText**: The main body of the question. For "Fill in the Blanks", use underscores (e.g., "The capital of France is ____.").
+3.  **questionText**: The main body of the question. For "Fill in the Blanks", use underscores (e.g., "The capital of France is ____."). Use LaTeX for math equations wrapped in $...$ (inline) or $$...$$ (display).
 4.  **options**: This field MUST be a string.
     - For 'Multiple Choice', provide a JSON string representation of an array of 4 options (e.g., '["Paris", "London", "Berlin", "Madrid"]').
     - For 'Match the Following', provide a JSON string of an object with 'columnA' and 'columnB' keys, which are string arrays (e.g., '{"columnA": ["France", "Germany"], "columnB": ["Berlin", "Paris"]}'). Ensure Column B is shuffled.
@@ -162,7 +175,7 @@ Your entire output must be ONLY the JSON array of question objects, without any 
         }
 
         const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
+        model: "gemini-2.5-pro-preview",
         contents: [{ parts }],
         config: { 
             responseMimeType: "application/json",
@@ -308,7 +321,7 @@ Your entire output must be ONLY the JSON object conforming to the provided schem
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
+      model: "gemini-2.5-pro-preview",
       contents: [{ parts: [{ text: analysisPrompt }] }],
       config: {
         responseMimeType: "application/json",
@@ -356,7 +369,7 @@ Your entire output must be ONLY the JSON object conforming to the provided schem
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-pro",
+            model: "gemini-2.5-pro-preview",
             contents,
             config: {
                 responseMimeType: "application/json",
@@ -378,7 +391,7 @@ export const generateChatResponseStream = async (chat: Chat, messageParts: Part[
             if (useThinking) config.thinkingConfig = { thinkingBudget: 8192 };
 
             return chat.sendMessageStream({
-                contents: { parts: messageParts },
+                message: messageParts,
                 config: config,
             });
         }
@@ -449,7 +462,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
 ${questionsSummary}`;
 
     const chat = ai.chats.create({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-preview",
         config: {
             systemInstruction,
             tools: [{ functionDeclarations: editTools }]
@@ -477,7 +490,7 @@ export const translatePaperService = async (paperData: QuestionPaperData, target
     const textContent = { schoolName: paperData.schoolName, className: paperData.className, subject: paperData.subject, questions: paperData.questions.map(q => ({ questionNumber: q.questionNumber, questionText: q.questionText, options: (typeof q.options === 'object' && q.options !== null) ? JSON.stringify(q.options) : q.options, answer: (typeof q.answer === 'object' && q.answer !== null) ? JSON.stringify(q.answer) : q.answer })) };
     const prompt = `You are a translation expert. Translate the following JSON object's text content into **${targetLanguage}**. - Translate all string values. - For 'options' and 'answer' fields that contain stringified JSON, you must translate the text inside the JSON, but return the entire field as a valid, escaped JSON string. - Maintain the exact JSON structure of the original object. Your entire output must be a single, valid JSON object. **JSON to Translate:** ${JSON.stringify(textContent, null, 2)}`;
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.5-pro", contents: prompt, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['questionNumber', 'questionText', 'answer'] } } }, required: ['schoolName', 'className', 'subject', 'questions'] } } });
+        const response = await ai.models.generateContent({ model: "gemini-2.5-pro-preview", contents: prompt, config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { schoolName: { type: Type.STRING }, className: { type: Type.STRING }, subject: { type: Type.STRING }, questions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { questionNumber: { type: Type.INTEGER }, questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING } }, required: ['questionNumber', 'questionText', 'answer'] } } }, required: ['schoolName', 'className', 'subject', 'questions'] } } });
         const translatedContent = JSON.parse(response.text);
         const processedTranslatedQuestions = translatedContent.questions.map((q: any) => {
             const newQ = {...q};
@@ -516,7 +529,7 @@ export const translateQuestionService = async (question: Question, targetLanguag
     const responseSchema = { type: Type.OBJECT, properties: { questionText: { type: Type.STRING }, options: { type: Type.STRING }, answer: { type: Type.STRING }, }, required: ['questionText', 'options', 'answer'] };
 
     try {
-        const response = await ai.models.generateContent({ model: "gemini-2.5-pro", contents: prompt, config: { responseMimeType: "application/json", responseSchema } });
+        const response = await ai.models.generateContent({ model: "gemini-2.5-pro-preview", contents: prompt, config: { responseMimeType: "application/json", responseSchema } });
         const translatedContent = JSON.parse(response.text);
         
         let parsedOptions: any = translatedContent.options;
