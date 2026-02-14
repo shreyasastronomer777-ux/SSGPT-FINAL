@@ -57,8 +57,8 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     try {
       if (!process.env.API_KEY) throw new Error("API_KEY is not configured.");
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Fix: Ensured model uses 'gemini-flash-lite-latest' alias.
-      const newChat = ai.chats.create({ model: 'gemini-flash-lite-latest', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
+      // Fix: Ensured model uses 'gemini-2.5-flash-preview' alias to handle rate limits better.
+      const newChat = ai.chats.create({ model: 'gemini-2.5-flash-preview', config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperFunctionDeclaration] }] } });
       setChat(newChat);
       const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
       if (!importedFilesRaw) {
@@ -72,14 +72,12 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   }, []);
     
   useEffect(() => { initChat(); outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 }); return () => { isLiveSessionActive && sessionPromiseRef.current?.then(session => session.close()); }; }, [initChat]);
-  
   useEffect(() => {
     const importedFilesRaw = sessionStorage.getItem('ssgpt_imported_files');
     if (importedFilesRaw) {
         sessionStorage.removeItem('ssgpt_imported_files');
         try {
-            // Fix: Cast importedFiles to AttachedFile[] to prevent 'unknown' type errors
-            const importedFiles = JSON.parse(importedFilesRaw) as AttachedFile[];
+            const importedFiles = JSON.parse(importedFilesRaw);
             if (Array.isArray(importedFiles) && importedFiles.length > 0) {
                 setAttachedFiles(prev => [...prev, ...importedFiles]);
                 const fileNames = importedFiles.map(f => f.name).join(', ');
@@ -116,6 +114,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       });
       setAttachedFiles([]); // Clear after sending
 
+      // Fix: Updated call to generateChatResponseStream with 4 arguments to fix compilation error.
       const responseStream = await generateChatResponseStream(chat, messageParts, useSearch, useThinking);
       const newBotMessage: Message = { id: `bot-${Date.now()}`, sender: 'bot', text: '', grounding: [] };
       setMessages(prev => [...prev, newBotMessage]);

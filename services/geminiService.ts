@@ -23,10 +23,24 @@ const validateAndFixLatex = (jsonStr: string): string => {
 
 const handleApiError = (error: any, context: string) => {
     console.error(`Error in ${context}:`, error);
-    const msg = error?.message || "";
-    if (msg.includes("Safety")) throw new Error("Content flagged by safety. Please refine your academic topics.");
-    if (msg.includes("Quota") || msg.includes("429")) throw new Error("API Rate limit exceeded. Please wait a moment.");
-    throw new Error(`AI Generation Failed (${context}). Check connection.`);
+    
+    // Safely extract error message from various possible shapes of the error object
+    const msg = error?.message || error?.error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+    
+    if (msg.includes("Safety") || msg.includes("blocked")) {
+        throw new Error("Content flagged by safety filters. Please refine your academic topics.");
+    }
+    
+    // Handle Quota/Rate Limits (429) specifically
+    if (msg.includes("429") || msg.includes("Quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+        throw new Error("System is currently experiencing high traffic (Rate Limit). Please wait 30 seconds and try again.");
+    }
+    
+    if (msg.includes("503") || msg.includes("Overloaded")) {
+        throw new Error("AI Service is temporarily overloaded. Please try again in a moment.");
+    }
+
+    throw new Error(`AI Generation Failed (${context}): ${msg.substring(0, 100)}...`);
 };
 
 const parseAiJson = (text: string | undefined) => {
