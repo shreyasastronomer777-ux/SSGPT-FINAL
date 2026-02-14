@@ -78,12 +78,11 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  let nextStartTime = 0;
+  const nextStartTimeRef = useRef(0);
 
   useEffect(() => {
     if (!process.env.API_KEY) return;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Fix: Updated model to 'gemini-3-flash-preview' based on task type.
     setChat(ai.chats.create({ 
         model: 'gemini-3-flash-preview', 
         config: { systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }] } 
@@ -91,7 +90,7 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
   }, []);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isBotTyping]);
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isBotTyping || !chat) return;
@@ -117,13 +116,14 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
   };
 
   const startLiveSession = async (voice: VoiceOption) => {
-    setIsVoiceModalOpen(false); setIsLiveSessionActive(true);
-    setTranscript(''); setAiLiveTranscript('');
+    setIsVoiceModalOpen(false); 
+    setIsLiveSessionActive(true);
+    setTranscript(''); 
+    setAiLiveTranscript('');
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const inputCtx = new AudioContext({ sampleRate: 16000 });
     
-    // Fix: Updated model to 'gemini-2.5-flash-native-audio-preview-12-2025' for real-time audio.
     sessionPromiseRef.current = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       callbacks: {
@@ -139,19 +139,27 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
         onmessage: async (message: LiveServerMessage) => {
           if (message.serverContent?.inputTranscription) setTranscript(t => t + message.serverContent!.inputTranscription!.text);
           if (message.serverContent?.outputTranscription) setAiLiveTranscript(t => t + message.serverContent!.outputTranscription!.text);
-          if (message.serverContent?.turnComplete) { setTranscript(''); setAiLiveTranscript(''); }
           
           const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
           if (base64Audio) {
             const outCtx = outputAudioContextRef.current!;
-            nextStartTime = Math.max(nextStartTime, outCtx.currentTime);
+            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outCtx.currentTime);
             const buffer = await decodeAudioData(decode(base64Audio), outCtx, 24000, 1);
             const source = outCtx.createBufferSource();
-            source.buffer = buffer; source.connect(outCtx.destination);
-            source.start(nextStartTime); nextStartTime += buffer.duration;
+            source.buffer = buffer; 
+            source.connect(outCtx.destination);
+            source.start(nextStartTimeRef.current); 
+            nextStartTimeRef.current += buffer.duration;
             sourcesRef.current.add(source);
             source.onended = () => sourcesRef.current.delete(source);
           }
+          
+          if (message.serverContent?.interrupted) {
+            sourcesRef.current.forEach(s => s.stop());
+            sourcesRef.current.clear();
+            nextStartTimeRef.current = 0;
+          }
+
           if (message.toolCall?.functionCalls?.length) {
               onGenerate(message.toolCall.functionCalls[0].args as FormData);
               endLiveSession();
@@ -159,7 +167,14 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
         },
         onclose: () => { stream.getTracks().forEach(t => t.stop()); inputCtx.close(); setIsLiveSessionActive(false); }
       },
-      config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.id } } }, systemInstruction, tools: [{ functionDeclarations: [generatePaperTool] }], inputAudioTranscription: {}, outputAudioTranscription: {} }
+      config: { 
+        responseModalities: [Modality.AUDIO], 
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.id } } }, 
+        systemInstruction, 
+        tools: [{ functionDeclarations: [generatePaperTool] }], 
+        inputAudioTranscription: {}, 
+        outputAudioTranscription: {} 
+      }
     });
   };
 
@@ -178,7 +193,6 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const inputCtx = new AudioContext({ sampleRate: 16000 });
-    // Fix: Updated model to 'gemini-2.5-flash-native-audio-preview-12-2025'.
     sessionPromiseRef.current = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
@@ -191,10 +205,14 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
                 };
                 source.connect(processor); processor.connect(inputCtx.destination);
             },
-            onmessage: (m) => { if (m.serverContent?.inputTranscription) setUserInput(p => p + m.serverContent!.inputTranscription!.text); },
+            onmessage: (m) => { 
+              if (m.serverContent?.inputTranscription) {
+                setUserInput(p => p + m.serverContent!.inputTranscription!.text); 
+              }
+            },
             onclose: () => { stream.getTracks().forEach(t => t.stop()); inputCtx.close(); setIsDictating(false); }
         },
-        config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, systemInstruction: "Transcribe ONLY. Be silent." }
+        config: { responseModalities: [Modality.AUDIO], inputAudioTranscription: {}, systemInstruction: "Transcribe user audio into text accurately. Do not speak." }
     });
   };
 
@@ -203,32 +221,59 @@ const ChatbotInterface: React.FC<{ onGenerate: (formData: FormData) => void }> =
       <div className="flex-1 p-4 overflow-y-auto space-y-6 chat-scrollbar">
         <div className="max-w-3xl mx-auto w-full space-y-6">
           {messages.map(m => <MessageBubble key={m.id} message={m} />)}
-          {isBotTyping && <div className="animate-pulse text-slate-400 text-xs pl-12">AI is writing...</div>}
+          {isBotTyping && <div className="animate-pulse text-slate-400 text-xs pl-12 font-semibold">SSGPT is crafting a response...</div>}
         </div>
         <div ref={messagesEndRef} />
       </div>
-      <div className="p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800">
-        <div className="max-w-3xl mx-auto flex gap-2">
-          <input value={userInput} onChange={e => setUserInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} placeholder="Message SSGPT..." className="flex-1 p-3 rounded-xl border dark:border-slate-700 bg-transparent text-sm" />
-          <button onClick={handleDictate} className={`p-3 rounded-xl transition-colors ${isDictating ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`} title="Dictate"><MicIcon className="w-5 h-5"/></button>
-          <button onClick={() => setIsVoiceModalOpen(true)} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg"><VoiceIcon className="w-5 h-5"/></button>
-          <button onClick={() => handleSendMessage(userInput)} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg"><SendIcon className="w-5 h-5"/></button>
+      <div className="p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800 shadow-2xl">
+        <div className="max-w-3xl mx-auto flex gap-3">
+          <input 
+            value={userInput} 
+            onChange={e => setUserInput(e.target.value)} 
+            onKeyDown={e => e.key === 'Enter' && handleSendMessage(userInput)} 
+            placeholder="Type your exam requirements..." 
+            className="flex-1 p-4 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:border-indigo-500 outline-none transition-all" 
+          />
+          <div className="flex gap-2">
+            <button 
+              onClick={handleDictate} 
+              className={`p-4 rounded-2xl transition-all ${isDictating ? 'bg-red-500 text-white animate-pulse ring-4 ring-red-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'}`} 
+              title="Voice Dictation"
+            >
+              <MicIcon className="w-6 h-6"/>
+            </button>
+            <button 
+              onClick={() => setIsVoiceModalOpen(true)} 
+              className="p-4 bg-indigo-100 text-indigo-600 rounded-2xl hover:bg-indigo-200 transition-all shadow-sm"
+              title="Voice Mode"
+            >
+              <VoiceIcon className="w-6 h-6"/>
+            </button>
+            <button 
+              onClick={() => handleSendMessage(userInput)} 
+              disabled={!userInput.trim() || isBotTyping}
+              className="p-4 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 hover:scale-105 active:scale-95 disabled:opacity-50 transition-all"
+            >
+              <SendIcon className="w-6 h-6"/>
+            </button>
+          </div>
         </div>
       </div>
       {isVoiceModalOpen && <VoiceModeModal onClose={() => setIsVoiceModalOpen(false)} onStart={startLiveSession} />}
       {isLiveSessionActive && (
         <div className="fixed inset-0 bg-slate-950/95 z-[100] flex flex-col items-center justify-center p-8 animate-fade-in text-center">
           <div className="relative mb-12">
-            <div className="w-40 h-40 bg-indigo-500/20 rounded-full animate-ping absolute inset-0" />
-            <div className="w-40 h-40 bg-indigo-600 rounded-full flex items-center justify-center shadow-2xl border-4 border-white/10 relative z-10">
-                <VoiceIcon className="w-16 h-16 text-white" />
+            <div className="w-48 h-48 bg-indigo-500/20 rounded-full animate-ping absolute inset-0" />
+            <div className="w-48 h-48 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full flex items-center justify-center shadow-2xl border-8 border-white/5 relative z-10">
+                <VoiceIcon className="w-20 h-20 text-white" />
             </div>
           </div>
-          <div className="max-w-md space-y-4">
+          <div className="max-w-md space-y-6">
+            <h3 className="text-3xl font-black text-white tracking-tight">SSGPT Voice Mode</h3>
             <p className="text-indigo-400 text-xl font-bold italic h-8">{transcript || "Listening..."}</p>
-            <p className="text-white text-lg opacity-80 h-12 overflow-hidden">{aiLiveTranscript}</p>
+            <p className="text-white text-lg opacity-70 h-20 overflow-hidden line-clamp-3">{aiLiveTranscript || "The assistant will speak back to you."}</p>
           </div>
-          <button onClick={endLiveSession} className="mt-12 px-12 py-4 bg-red-600 text-white rounded-full font-black text-lg hover:scale-105 transition-transform shadow-xl shadow-red-900/40">End Voice Mode</button>
+          <button onClick={endLiveSession} className="mt-16 px-16 py-5 bg-red-600 text-white rounded-full font-black text-xl hover:scale-105 transition-transform shadow-xl shadow-red-900/40">End Conversation</button>
         </div>
       )}
     </div>

@@ -63,7 +63,7 @@ function App() {
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         } catch (error) {
           console.error("Failed to load paper from URL hash:", error);
-          alert("Internal Error Occurred");
+          setError("Failed to load the shared paper. The link might be broken.");
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         }
       }
@@ -136,9 +136,9 @@ function App() {
 
       try {
           await action();
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
-          setError('Internal Error Occurred');
+          setError(e.message || 'An unexpected error occurred during generation.');
       } finally {
           setIsLoading(false);
       }
@@ -242,7 +242,7 @@ function App() {
 
     const handleStudentViewPaperFromUrl = (url: string) => {
         if (!url.includes('#paper/')) {
-            alert("Internal Error Occurred");
+            setError("The pasted link does not seem to contain a valid SSGPT paper.");
             return;
         }
         try {
@@ -259,7 +259,7 @@ function App() {
             setPage('edit');
         } catch (e) {
             console.error("Failed to process pasted link:", e);
-            alert("Internal Error Occurred");
+            setError("Failed to decode the paper link. It might be corrupted.");
         }
     };
     
@@ -352,15 +352,25 @@ function App() {
           <div className="text-center max-w-lg mx-auto p-8 bg-white dark:bg-slate-800 rounded-xl shadow-xl border dark:border-slate-700 animate-fade-in-up">
             <h3 className="text-xl font-semibold text-red-500 mb-4">Operation Failed</h3>
             <p className="text-slate-600 dark:text-slate-400 mb-6 whitespace-pre-wrap">{error}</p>
-            <button
-              onClick={() => {
-                setError(null);
-                handleNavigate(currentUser.role === 'teacher' ? 'generate' : 'practice');
-              }}
-              className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700"
-            >
-              Try Again
-            </button>
+            <div className="flex flex-col gap-3">
+                <button
+                onClick={() => {
+                    setError(null);
+                    handleNavigate(currentUser.role === 'teacher' ? 'creationHub' : 'practice');
+                }}
+                className="bg-indigo-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition-colors shadow-md"
+                >
+                Try Different Method
+                </button>
+                <button
+                onClick={() => {
+                    window.location.reload();
+                }}
+                className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-medium text-sm"
+                >
+                Reload Application
+                </button>
+            </div>
           </div>
         </div>
       );

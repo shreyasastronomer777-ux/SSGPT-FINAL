@@ -152,11 +152,11 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 triggerMathRendering(el);
-                // Ensure math is fully settled
+                // Ensure math is fully settled before capture to avoid shifts
                 await new Promise(resolve => setTimeout(resolve, 2000));
 
                 const canvas = await html2canvas(el, { 
-                    scale: 4.5, // High resolution for math crispness
+                    scale: 4.5, // Ultra-high resolution for professional math crispness
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
@@ -202,7 +202,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
                     <h2 className="text-3xl font-black tracking-tight text-center">Finalizing Board Standards</h2>
-                    <p className="text-slate-400 mt-4 px-10 text-center max-w-md">Locking math geometries and generating high-resolution PDF pages...</p>
+                    <p className="text-slate-400 mt-4 px-10 text-center max-w-md">Locking math geometries and generating ultra-high-resolution PDF pages...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
