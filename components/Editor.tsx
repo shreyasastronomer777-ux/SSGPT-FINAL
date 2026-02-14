@@ -22,8 +22,9 @@ const triggerMathRendering = (element: HTMLElement | null) => {
     if (!element || !(window as any).renderMathInElement) return;
     
     // Explicitly check for standard mode before rendering to avoid KaTeX abortion
+    // quirks mode is usually document.compatMode === "BackCompat"
     if (document.compatMode !== "CSS1Compat") {
-        console.error("SSGPT: Document is in quirks mode. Math rendering cannot proceed safely.");
+        console.error("SSGPT: Document is in quirks mode. KaTeX rendering cannot proceed safely without potentially crashing the layout.");
         return;
     }
 
@@ -68,7 +69,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Academic board standards active. Math rendering is stabilized with extra clearance for complex LaTeX expressions like fractions and powers." }]);
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Board Standards active. Spacing and math clearance have been optimized. All commands from the co-editor will strictly follow double-backslash JSON formatting." }]);
         setTimeout(() => onReady(), 200);
     }, []);
 
@@ -126,7 +127,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
         if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
-        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px; font-weight:bold;">Preparing Academic Paper...</div>']);
+        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px; font-weight:bold;">Finalizing Academic Rendering...</div>']);
         
         // Render math on actual visible pages
         setTimeout(() => triggerMathRendering(pagesContainerRef.current), 300);
@@ -144,7 +145,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
             
             if (!pageElements || pageElements.length === 0) { 
-                alert("Rendering paper..."); 
+                alert("Rendering content, please try again in a moment."); 
                 setIsExporting(false);
                 return; 
             }
@@ -152,11 +153,11 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
                 triggerMathRendering(el);
-                // Ensure math is fully settled
+                // Ensure math is fully settled and rendered before capture
                 await new Promise(resolve => setTimeout(resolve, 2000));
 
                 const canvas = await html2canvas(el, { 
-                    scale: 4.0, // High resolution for math crispness
+                    scale: 4.5, // Ultra-high resolution for mathematical subscripts and lines
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
@@ -167,10 +168,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 if (i > 0) pdf.addPage();
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
             }
-            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Academic_Paper.pdf`);
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Paper_Export.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Export error occurred.");
+            alert("An error occurred during high-resolution generation.");
         } finally { setIsExporting(false); }
     };
 
@@ -201,8 +202,8 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             {isExporting && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
-                    <h2 className="text-3xl font-black tracking-tight text-center">Finalizing Board Standards</h2>
-                    <p className="text-slate-400 mt-4 px-10 text-center max-w-md">Locking math geometries and generating high-resolution PDF pages...</p>
+                    <h2 className="text-3xl font-black tracking-tight text-center uppercase">Stabilizing Math Geometry</h2>
+                    <p className="text-slate-400 mt-4 px-10 text-center max-w-md">Capturing high-resolution LaTeX fractions and symbols for final output...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -235,7 +236,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
                 {pagesHtml.map((html, i) => (
                     <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-16 relative overflow-hidden" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, border: `${state.styles.borderWidth}px solid ${state.styles.borderColor}` }}>
-                        <div className="paper-page-content prose max-w-none p-[80px_100px] select-text" 
+                        <div className="paper-page-content prose max-w-none p-[90px_100px] select-text" 
                              style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                     </div>

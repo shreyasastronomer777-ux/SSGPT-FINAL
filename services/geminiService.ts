@@ -13,26 +13,29 @@ const handleApiError = (error: any, context: string) => {
 
 const parseAiJson = (text: string) => {
     try {
-        // More robust JSON extraction from markdown blocks
+        // Find JSON block if AI provided surrounding text
         const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
-        const cleanedText = jsonMatch ? jsonMatch[1] : text.replace(/```json/g, '').replace(/```/g, '').trim();
+        let cleanedText = jsonMatch ? jsonMatch[1] : text.replace(/```json/g, '').replace(/```/g, '').trim();
         
-        // Final sanity check for common LaTeX JSON escape errors
-        // Example: \times inside a string sometimes gets turned into \t times
-        const sanitized = cleanedText.replace(/\\times/g, '\\\\times')
-                                   .replace(/\\frac/g, '\\\\frac')
-                                   .replace(/\\sqrt/g, '\\\\sqrt')
-                                   .replace(/\\pm/g, '\\\\pm');
+        // CRITICAL FIX: The AI often outputs single backslashes in JSON strings for LaTeX commands
+        // which makes JSON.parse fail or interpret them as tabs/newlines.
+        // We look for common LaTeX commands that often break: \times, \frac, \sqrt, \pm, \div
+        // Note: We only replace if they are NOT already escaped.
+        const sanitized = cleanedText
+            .replace(/(?<!\\)\\times/g, '\\\\times')
+            .replace(/(?<!\\)\\frac/g, '\\\\frac')
+            .replace(/(?<!\\)\\sqrt/g, '\\\\sqrt')
+            .replace(/(?<!\\)\\pm/g, '\\\\pm')
+            .replace(/(?<!\\)\\div/g, '\\\\div');
 
         return JSON.parse(sanitized);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
         try {
-            // Fallback to simpler parse if sanitization failed
             const simpleClean = text.replace(/```json/g, '').replace(/```/g, '').trim();
             return JSON.parse(simpleClean);
         } catch (innerE) {
-            throw new Error("Invalid response format from AI.");
+            throw new Error("Invalid response format from AI. The generated math formatting was too complex for the parser.");
         }
     }
 };
@@ -42,7 +45,7 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Use LaTeX for math symbols. Always use double backslashes in JSON strings for LaTeX commands.`;
+    Use LaTeX for math symbols with double backslashes.`;
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -63,27 +66,25 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are a Senior Board Examiner. Create a professional, high-standard assessment in **${language}**.
+You are a Senior Academic Examiner. Create a professional assessment in **${language}**.
 
-**CORE INSTRUCTIONS (STRICTLY ADHERE):**
-1. **DIVERSITY:** You MUST generate the EXACT quantity of questions for EVERY type specified in the Structure. Do NOT default to Multiple Choice unless specifically asked.
+**CORE MANDATORY INSTRUCTIONS:**
+1. **DIVERSITY:** You MUST generate the EXACT quantity of questions for EVERY type specified in the Structure. Do NOT default to MCQs.
 2. **LATEX (CRITICAL):** Use professional LaTeX for ALL mathematical symbols, fractions, powers, and roots. Wrap math in $...$. 
-   CRITICAL FOR JSON: Always escape LaTeX commands with FOUR backslashes in your mind so they end up as TWO backslashes in the JSON string.
-   Example: Use "$\\\\frac{a}{b}$" for fractions. NEVER use single backslashes (\\) like "\\times" as they will be parsed as tab characters.
-3. **TYPE-SPECIFIC RULES:** 
-   - MCQs: Exactly 4 options in an array.
+   CRITICAL FOR JSON: In the JSON string, always use DOUBLE backslashes for commands. 
+   Example: "$\\frac{a}{b}$" must be written as "$\\\\frac{a}{b}$" in the JSON raw string. NEVER use single backslashes like "\\times" as they break JSON parsing by appearing as tab characters.
+3. **TYPE RULES:** 
    - Match the Following: Options MUST be a JSON object {columnA: [], columnB: []}.
-   - Fill in Blanks: Use "_______" (exactly 7 underscores) in text.
-   - Short/Long Answer: Options must be NULL. Provide detailed answers for the Marking Scheme.
+   - Fill in Blanks: Use "_______" (exactly 7 underscores) for blanks.
+   - Theoretical: Options must be NULL.
 
-**PAPER PARAMETERS:**
-- School: ${schoolName}
-- Class: ${className}
+**SPECIFICATIONS:**
 - Subject: ${subject}
+- Class: ${className}
 - Topics: ${topics}
 - Marks: ${totalMarks}
 - Time: ${timeAllowed}
-- REQUIRED STRUCTURE: ${JSON.stringify(questionDistribution)}
+- STRUCTURE: ${JSON.stringify(questionDistribution)}
 
 Return ONLY valid JSON array of question objects.
 `;
@@ -147,7 +148,7 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `Academic Editor. Fix typos, adjust difficulty, or refine LaTeX math formatting ($...$). Be professional and academic. Ensure all LaTeX commands use double backslashes in JSON.`
+            systemInstruction: `Academic Editor. Use professional LaTeX formatting ($...$) with double backslashes in JSON responses to avoid parsing errors.`
         }
     });
 };
@@ -181,7 +182,7 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: `Analyze the following text into a structured academic exam JSON. Use LaTeX for math. Use double backslashes for commands. Text: ${text}`,
+            contents: `Analyze text into structured academic JSON. Use LaTeX with double backslashes. Text: ${text}`,
             config: { responseMimeType: "application/json" }
         });
         return parseAiJson(response.text) as AnalysisResult;
@@ -197,7 +198,7 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: { parts: [...imageParts, { text: "Perform OCR on these images and convert the handwritten questions into a structured academic exam JSON. Ensure math formulas use LaTeX with double backslashes for commands." }] },
+            contents: { parts: [...imageParts, { text: "OCR handwritten questions into structured academic JSON. Use LaTeX with double backslashes." }] },
             config: { responseMimeType: "application/json" }
         });
         return parseAiJson(response.text) as AnalysisResult;
@@ -213,29 +214,16 @@ export const generateImage = async (prompt: string, aspectRatio: string = "1:1")
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: {
-                parts: [
-                    {
-                        text: prompt,
-                    },
-                ],
-            },
-            config: {
-                imageConfig: {
-                    aspectRatio: aspectRatio as any,
-                },
-            },
+            contents: [{ parts: [{ text: prompt }] }],
+            config: { imageConfig: { aspectRatio: aspectRatio as any } },
         });
 
-        if (response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts) {
+        if (response.candidates?.[0]?.content?.parts) {
             for (const part of response.candidates[0].content.parts) {
-                if (part.inlineData) {
-                    const base64EncodeString: string = part.inlineData.data;
-                    return `data:image/png;base64,${base64EncodeString}`;
-                }
+                if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
             }
         }
-        throw new Error("No image was returned by the AI model.");
+        throw new Error("No image was returned.");
     } catch (error) {
         handleApiError(error, "generateImage");
         throw error;

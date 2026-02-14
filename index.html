@@ -78,26 +78,26 @@
         100% { background-position: 0% 50%; }
     }
     
-    /* PROFESSIONAL KATEX STABILIZATION */
+    /* PROFESSIONAL KATEX STABILIZATION - DEEP FIX FOR QUIRKS MODE & OVERLAP */
     .katex {
-        font-size: 1.15em !important;
-        line-height: 1.4 !important;
+        font-size: 1.1em !important;
+        line-height: 1.2 !important;
         text-indent: 0 !important;
         display: inline-block;
         white-space: nowrap !important;
         vertical-align: middle;
     }
     
-    /* Deep fix for fraction line overlap and clearance */
+    /* Explicit clearance for fractions */
     .katex .mfrac .vlist-t { 
         border-collapse: separate !important; 
     }
     .katex .mfrac .vlist-r { 
-        padding-top: 0.4em !important; 
-        padding-bottom: 0.4em !important; 
+        padding-top: 0.5em !important; 
+        padding-bottom: 0.5em !important; 
     }
     .katex .frac-line { 
-        border-bottom-width: 0.1em !important;
+        border-bottom-width: 0.12em !important;
         margin: 0.3em 0 !important;
         position: relative !important;
         display: block !important;
@@ -106,11 +106,11 @@
     .katex .vlist-s { display: none !important; }
     
     .katex-display { 
-        margin: 2em 0 !important;
+        margin: 2.5em 0 !important;
         overflow-x: auto;
         overflow-y: hidden;
-        line-height: 2.8 !important;
-        padding: 1em 0;
+        line-height: 3.5 !important;
+        padding: 1.5em 0;
     }
 
     [contenteditable="true"] {
