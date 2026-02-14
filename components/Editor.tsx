@@ -14,9 +14,19 @@ import { SpinnerIcon } from './icons/SpinnerIcon';
 
 const A4_WIDTH_PX = 794; 
 const A4_HEIGHT_PX = 1123;
+// Professional margins for Board Exams
+const CONTENT_WIDTH_PX = 794 - (100 * 2); 
+const MAX_PAGE_HEIGHT_PX = 1123 - (80 * 2);
 
 const triggerMathRendering = (element: HTMLElement | null) => {
     if (!element || !(window as any).renderMathInElement) return;
+    
+    // Explicitly check for standard mode before rendering to avoid KaTeX abortion
+    if (document.compatMode !== "CSS1Compat") {
+        console.error("SSGPT: Document is in quirks mode. Math rendering cannot proceed safely.");
+        return;
+    }
+
     try {
         (window as any).renderMathInElement(element, { 
             delimiters: [
@@ -25,10 +35,13 @@ const triggerMathRendering = (element: HTMLElement | null) => {
                 {left: '\\(', right: '\\)', display: false},
                 {left: '\\[', right: '\\]', display: true}
             ], 
-            throwOnError: false 
+            throwOnError: false,
+            strict: false
         });
+        // Force reflow for accurate geometry after math renders
+        void element.offsetHeight;
     } catch (err) {
-        console.error("KaTeX render error:", err);
+        console.warn("KaTeX render attempt encountered issues:", err);
     }
 };
 
@@ -51,30 +64,39 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     const [editingChat, setEditingChat] = useState<Chat | null>(null);
     const [pagesHtml, setPagesHtml] = useState<string[]>([]);
     const pagesContainerRef = useRef<HTMLDivElement>(null);
+    const [debouncedPaper, setDebouncedPaper] = useState(state.paper);
 
     useEffect(() => {
         setEditingChat(createEditingChat(paperData));
-        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Paper layout optimized for professional standards. I've adjusted vertical spacing for better math rendering." }]);
-        onReady();
+        setCoEditorMessages([{ id: '1', sender: 'bot', text: "Academic board standards active. Math rendering is stabilized with extra clearance for complex LaTeX expressions like fractions and powers." }]);
+        setTimeout(() => onReady(), 200);
     }, []);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedPaper(state.paper);
+        }, 1200); 
+        return () => clearTimeout(timer);
+    }, [state.paper]);
 
     const paginate = useCallback(() => {
         const container = document.createElement('div');
-        // Subtract more for robust horizontal fit in PDF
-        container.style.width = `${A4_WIDTH_PX - 140}px`; 
+        container.style.width = `${CONTENT_WIDTH_PX}px`;
         container.style.fontFamily = state.styles.fontFamily;
         container.style.position = 'absolute';
         container.style.left = '-9999px';
         container.style.top = '0';
         container.style.visibility = 'hidden';
         
-        const htmlContent = generateHtmlFromPaperData(state.paper, { 
+        const htmlContent = generateHtmlFromPaperData(debouncedPaper, { 
             logoConfig: state.logo.src ? { src: state.logo.src, alignment: 'center' } : undefined,
             isAnswerKey: isAnswerKeyMode
         });
         
         container.innerHTML = htmlContent;
         document.body.appendChild(container);
+        
+        // Critical: Math must be rendered before we measure heights for pagination
         triggerMathRendering(container);
 
         const contentRoot = container.querySelector('#paper-root') || container.children[0];
@@ -83,17 +105,15 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         const pages: string[] = [];
         let currentPageHtml = ""; 
         let currentHeight = 0;
-        // Allow slightly more height per page for better usage
-        const maxPageHeight = A4_HEIGHT_PX - 140; 
+        const maxPageHeight = MAX_PAGE_HEIGHT_PX; 
 
         children.forEach(child => {
             const el = child as HTMLElement;
             const style = window.getComputedStyle(el);
             const marginTop = parseFloat(style.marginTop || '0');
             const marginBottom = parseFloat(style.marginBottom || '0');
-            const elHeight = el.getBoundingClientRect().height + marginTop + marginBottom;
+            const elHeight = el.offsetHeight + marginTop + marginBottom;
             
-            // If adding this element overflows the page, start a new one
             if (currentHeight + elHeight > maxPageHeight && currentPageHtml) { 
                 pages.push(currentPageHtml); 
                 currentPageHtml = ""; 
@@ -106,9 +126,11 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
 
         if (currentPageHtml) pages.push(currentPageHtml);
         document.body.removeChild(container);
-        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px;">Loading assessment...</div>']);
-        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 200);
-    }, [state.paper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
+        setPagesHtml(pages.length ? pages : ['<div style="text-align:center; padding: 100px; font-weight:bold;">Preparing Academic Paper...</div>']);
+        
+        // Render math on actual visible pages
+        setTimeout(() => triggerMathRendering(pagesContainerRef.current), 300);
+    }, [debouncedPaper, state.styles.fontFamily, state.logo, isAnswerKeyMode]);
 
     useEffect(() => { paginate(); }, [paginate]);
 
@@ -122,41 +144,33 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             const pageElements = pagesContainerRef.current?.querySelectorAll('.paper-page');
             
             if (!pageElements || pageElements.length === 0) { 
-                alert("No pages found to export."); 
+                alert("Rendering paper..."); 
                 setIsExporting(false);
                 return; 
             }
             
             for (let i = 0; i < pageElements.length; i++) {
                 const el = pageElements[i] as HTMLElement;
-                // Force a re-render of math and wait for settlement
                 triggerMathRendering(el);
-                await new Promise(resolve => setTimeout(resolve, 400)); 
+                // Ensure math is fully settled
+                await new Promise(resolve => setTimeout(resolve, 2000));
 
                 const canvas = await html2canvas(el, { 
-                    scale: 3, // Very high resolution to prevent fraction and border artifacts
+                    scale: 4.0, // High resolution for math crispness
                     useCORS: true, 
                     backgroundColor: '#ffffff',
                     logging: false,
-                    allowTaint: true,
-                    imageTimeout: 0,
-                    onclone: (clonedDoc) => {
-                        // Ensure cloned elements have overflow visible for clean capture
-                        const page = clonedDoc.querySelector('.paper-page') as HTMLElement;
-                        if (page) page.style.overflow = 'visible';
-                    }
+                    allowTaint: true
                 });
                 
                 const imgData = canvas.toDataURL('image/jpeg', 1.0);
                 if (i > 0) pdf.addPage();
-                // Add with FAST compression for performance while maintaining clarity
                 pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH, undefined, 'FAST');
             }
-            const name = `${state.paper.subject.replace(/\s+/g, '_')}${isAnswerKeyMode ? '_Key' : ''}_Official.pdf`;
-            pdf.save(name);
+            pdf.save(`${state.paper.subject.replace(/\s+/g, '_')}_Academic_Paper.pdf`);
         } catch (error) {
             console.error("PDF Export Error:", error);
-            alert("Export failed. If the paper is very long, please try a smaller batch.");
+            alert("Export error occurred.");
         } finally { setIsExporting(false); }
     };
 
@@ -167,7 +181,7 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
         try {
             const res = await getAiEditResponse(editingChat, msg);
             if (res.text) {
-                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Updated paper." }]);
+                setCoEditorMessages(prev => [...prev, { id: (Date.now()+1).toString(), sender: 'bot', text: res.text || "Applied changes." }]);
                 setTimeout(() => triggerMathRendering(document.querySelector('.chat-scrollbar')), 150);
             }
         } catch (e) { console.error(e); }
@@ -185,10 +199,10 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
     return (
         <div className="flex h-full bg-slate-200 dark:bg-gray-900 overflow-hidden relative">
             {isExporting && (
-                <div className="fixed inset-0 bg-black/85 backdrop-blur-3xl z-[100] flex flex-col items-center justify-center text-white">
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[100] flex flex-col items-center justify-center text-white">
                     <SpinnerIcon className="w-16 h-16 mb-6 text-indigo-400" />
-                    <h2 className="text-3xl font-black tracking-tight">Finalizing PDF</h2>
-                    <p className="text-slate-400 mt-4 px-10 text-center max-w-md">Optimizing high-resolution math blocks and table formatting for professional board standards.</p>
+                    <h2 className="text-3xl font-black tracking-tight text-center">Finalizing Board Standards</h2>
+                    <p className="text-slate-400 mt-4 px-10 text-center max-w-md">Locking math geometries and generating high-resolution PDF pages...</p>
                 </div>
             )}
             <div className="w-80 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl z-10">
@@ -219,9 +233,9 @@ const Editor = forwardRef<any, { paperData: QuestionPaperData; onSave: (p: Quest
             </div>
             <main className="flex-1 overflow-auto p-12 bg-slate-300 dark:bg-slate-950/20" ref={pagesContainerRef}>
                 {pagesHtml.map((html, i) => (
-                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-12 relative overflow-hidden" 
+                    <div key={i} className="paper-page bg-white shadow-2xl mx-auto mb-16 relative overflow-hidden" 
                         style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX, border: `${state.styles.borderWidth}px solid ${state.styles.borderColor}` }}>
-                        <div className="paper-page-content prose max-w-none p-[65px_80px] select-text" 
+                        <div className="paper-page-content prose max-w-none p-[80px_100px] select-text" 
                              style={{ fontFamily: state.styles.fontFamily, minHeight: '100%', background: 'white' }} 
                              dangerouslySetInnerHTML={{ __html: html }} />
                     </div>

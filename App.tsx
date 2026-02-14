@@ -146,6 +146,7 @@ function App() {
 
   const handleGenerate = useCallback((formData: FormData) => {
     setActivePaper(null);
+    setEditorReady(false);
     
     executeGeneration(async () => {
         const paper = await generateQuestionPaper(formData);
@@ -167,6 +168,7 @@ function App() {
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
     setIsLoading(true);
     setError(null);
+    setEditorReady(false);
 
     const finalPaper: QuestionPaperData = {
         ...paper,
@@ -196,11 +198,13 @@ function App() {
   
   const handleExitEditor = () => {
       setActivePaper(null);
+      setEditorReady(false);
       setPage(currentUser?.role === 'teacher' ? 'myPapers' : 'studentDashboard');
   };
   
   const handleEditPaper = (paper: QuestionPaperData) => {
       setActivePaper(paper);
+      setEditorReady(false);
       setPage('edit');
   };
   
@@ -251,6 +255,7 @@ function App() {
             authService.saveAttendedPaper(paperData);
             setAttendedPapers(authService.getAttendedPapers());
             setActivePaper(paperData);
+            setEditorReady(false);
             setPage('edit');
         } catch (e) {
             console.error("Failed to process pasted link:", e);
@@ -260,6 +265,7 @@ function App() {
     
     const handleViewAttendedPaper = (paper: QuestionPaperData) => {
         setActivePaper(paper);
+        setEditorReady(false);
         setPage('edit');
     };
     
@@ -293,7 +299,21 @@ function App() {
     handleNavigate('analyze');
   };
   
-  const editorRef = React.useRef<any>(null);
+  const editorRef = useRef<any>(null);
+
+  // Force re-render of computed actions by checking both the ready state and ref current
+  const editorActions = (page === 'edit' && (isEditorReady || editorRef.current)) ? {
+      onSaveAndExit: editorRef.current?.handleSaveAndExitClick,
+      onExport: editorRef.current?.openExportModal,
+      onAnswerKey: editorRef.current?.openAnswerKeyModal,
+      isSaving: editorRef.current?.isSaving,
+      paperSubject: activePaper?.subject,
+      undo: editorRef.current?.undo,
+      redo: editorRef.current?.redo,
+      canUndo: editorRef.current?.canUndo,
+      canRedo: editorRef.current?.canRedo,
+      isAnswerKeyMode: editorRef.current?.isAnswerKeyMode
+  } : undefined;
 
   if (isAuthLoading) {
     return (
@@ -400,19 +420,6 @@ function App() {
     
     return <div>Invalid user role.</div>
   };
-
-  const editorActions = (page === 'edit' && editorRef.current) ? {
-      onSaveAndExit: editorRef.current.handleSaveAndExitClick,
-      onExport: editorRef.current.openExportModal,
-      onAnswerKey: editorRef.current.openAnswerKeyModal,
-      isSaving: editorRef.current.isSaving,
-      paperSubject: activePaper?.subject,
-      undo: editorRef.current.undo,
-      redo: editorRef.current.redo,
-      canUndo: editorRef.current.canUndo,
-      canRedo: editorRef.current.canRedo,
-      isAnswerKeyMode: editorRef.current.isAnswerKeyMode
-  } : undefined;
 
   const isEditorPage = page === 'edit';
 

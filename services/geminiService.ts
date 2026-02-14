@@ -13,11 +13,27 @@ const handleApiError = (error: any, context: string) => {
 
 const parseAiJson = (text: string) => {
     try {
-        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(cleanedText);
+        // More robust JSON extraction from markdown blocks
+        const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```\n([\s\S]*?)\n```/);
+        const cleanedText = jsonMatch ? jsonMatch[1] : text.replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        // Final sanity check for common LaTeX JSON escape errors
+        // Example: \times inside a string sometimes gets turned into \t times
+        const sanitized = cleanedText.replace(/\\times/g, '\\\\times')
+                                   .replace(/\\frac/g, '\\\\frac')
+                                   .replace(/\\sqrt/g, '\\\\sqrt')
+                                   .replace(/\\pm/g, '\\\\pm');
+
+        return JSON.parse(sanitized);
     } catch (e) {
         console.error("JSON Parse Error. Raw text:", text);
-        throw new Error("Invalid response format from AI.");
+        try {
+            // Fallback to simpler parse if sanitization failed
+            const simpleClean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            return JSON.parse(simpleClean);
+        } catch (innerE) {
+            throw new Error("Invalid response format from AI.");
+        }
     }
 };
 
@@ -26,9 +42,8 @@ export const extractConfigFromTranscript = async (transcript: string): Promise<a
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Extract academic configuration from: "${transcript}". 
     Return JSON: {schoolName, className, subject, topics, difficulty, timeAllowed, questionDistribution: [{type, count, marks, taxonomy, difficulty}]}. 
-    Use LaTeX for math symbols.`;
+    Use LaTeX for math symbols. Always use double backslashes in JSON strings for LaTeX commands.`;
     try {
-        // Fix: Use 'gemini-3-flash-preview' for basic text extraction tasks.
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: prompt,
@@ -45,27 +60,32 @@ export const generateQuestionPaper = async (formData: FormData): Promise<Questio
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { schoolName, className, subject, topics, questionDistribution, totalMarks, language, timeAllowed, sourceMaterials, sourceFiles, modelQuality } = formData;
     
-    // Fix: Updated model names based on guidelines.
     const modelToUse = modelQuality === 'pro' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
 
     const finalPrompt = `
-You are a Senior Academic Examiner. Generate a board-standard exam paper in **${language}**.
+You are a Senior Board Examiner. Create a professional, high-standard assessment in **${language}**.
 
-**CORE FORMATTING RULES:**
-1. **LATEX:** Use professional LaTeX for ALL math symbols, fractions, and formulas ($x$, $\\frac{a}{b}$). Use DOUBLE BACKSLASHES (\\\\) for commands.
-2. **MULTIPLE CHOICE:** MUST provide EXACTLY 4 options in the 'options' array.
-3. **MATCH THE FOLLOWING:** 
-   - 'options' must be a JSON object: {"columnA": ["Item 1", "Item 2"...], "columnB": ["Shuffled Item 2 Match", "Shuffled Item 1 Match"...]}.
-   - 'answer' must be a key-value mapping of correct matches.
-4. **NO PREFIXES:** Do not include "Question 1", "Ans:", or "(a)" inside text strings.
-5. **SPACING:** Keep text concise to fit content efficiently.
+**CORE INSTRUCTIONS (STRICTLY ADHERE):**
+1. **DIVERSITY:** You MUST generate the EXACT quantity of questions for EVERY type specified in the Structure. Do NOT default to Multiple Choice unless specifically asked.
+2. **LATEX (CRITICAL):** Use professional LaTeX for ALL mathematical symbols, fractions, powers, and roots. Wrap math in $...$. 
+   CRITICAL FOR JSON: Always escape LaTeX commands with FOUR backslashes in your mind so they end up as TWO backslashes in the JSON string.
+   Example: Use "$\\\\frac{a}{b}$" for fractions. NEVER use single backslashes (\\) like "\\times" as they will be parsed as tab characters.
+3. **TYPE-SPECIFIC RULES:** 
+   - MCQs: Exactly 4 options in an array.
+   - Match the Following: Options MUST be a JSON object {columnA: [], columnB: []}.
+   - Fill in Blanks: Use "_______" (exactly 7 underscores) in text.
+   - Short/Long Answer: Options must be NULL. Provide detailed answers for the Marking Scheme.
 
 **PAPER PARAMETERS:**
-Subject: ${subject} | Class: ${className} | Topics: ${topics} | Marks: ${totalMarks}
-Structure: ${JSON.stringify(questionDistribution)}
-${sourceMaterials ? `Context: ${sourceMaterials}` : ''}
+- School: ${schoolName}
+- Class: ${className}
+- Subject: ${subject}
+- Topics: ${topics}
+- Marks: ${totalMarks}
+- Time: ${timeAllowed}
+- REQUIRED STRUCTURE: ${JSON.stringify(questionDistribution)}
 
-Return only valid JSON.
+Return ONLY valid JSON array of question objects.
 `;
 
     try {
@@ -89,7 +109,7 @@ Return only valid JSON.
                             type: { type: Type.STRING },
                             questionText: { type: Type.STRING },
                             options: { description: "Array for MCQ, or {columnA:[], columnB:[]} for Match." },
-                            answer: { description: "Correct answer string or mapping object." },
+                            answer: { description: "The correct answer or marking scheme." },
                             marks: { type: Type.NUMBER },
                             difficulty: { type: Type.STRING },
                             taxonomy: { type: Type.STRING }
@@ -127,19 +147,17 @@ export const createEditingChat = (paperData: QuestionPaperData) => {
     return ai.chats.create({
         model: "gemini-3-pro-preview",
         config: {
-            systemInstruction: `Academic Editor. STRICT LaTeX ($...$). No redundant numbering. Preserve language: ${paperData.subject}.`
+            systemInstruction: `Academic Editor. Fix typos, adjust difficulty, or refine LaTeX math formatting ($...$). Be professional and academic. Ensure all LaTeX commands use double backslashes in JSON.`
         }
     });
 };
 
 export const getAiEditResponse = async (chat: Chat, instruction: string) => {
-    // Fix: chat.sendMessage only accepts the message parameter.
     const response = await chat.sendMessage({ message: instruction });
     return { functionCalls: response.functionCalls || null, text: response.text || null };
 };
 
 export const generateChatResponseStream = async (chat: Chat, messageParts: Part[], useSearch?: boolean, useThinking?: boolean): Promise<AsyncGenerator<GenerateContentResponse>> => {
-    // Fix: chat.sendMessageStream only accepts the message parameter. Per-turn config (search/thinking) should be avoided or configured in chats.create.
     return chat.sendMessageStream({ message: messageParts });
 };
 
@@ -161,10 +179,9 @@ export const analyzePastedText = async (text: string): Promise<AnalysisResult> =
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        // Fix: Use 'gemini-3-flash-preview' for text analysis.
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: `Analyze into exam JSON. LaTeX math only. Text: ${text}`,
+            contents: `Analyze the following text into a structured academic exam JSON. Use LaTeX for math. Use double backslashes for commands. Text: ${text}`,
             config: { responseMimeType: "application/json" }
         });
         return parseAiJson(response.text) as AnalysisResult;
@@ -178,10 +195,9 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-        // Fix: Use 'gemini-3-flash-preview' for complex image OCR and reasoning tasks.
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: { parts: [...imageParts, { text: "OCR to exam JSON. LaTeX math formulas." }] },
+            contents: { parts: [...imageParts, { text: "Perform OCR on these images and convert the handwritten questions into a structured academic exam JSON. Ensure math formulas use LaTeX with double backslashes for commands." }] },
             config: { responseMimeType: "application/json" }
         });
         return parseAiJson(response.text) as AnalysisResult;
@@ -191,8 +207,6 @@ export const analyzeHandwrittenImages = async (imageParts: Part[]): Promise<Anal
     }
 };
 
-// Fix: Added missing generateImage export to resolve error in ImageGenerationModal.tsx.
-// Adheres to guidelines: uses 'gemini-2.5-flash-image' and iterates through candidates/parts to find inlineData.
 export const generateImage = async (prompt: string, aspectRatio: string = "1:1"): Promise<string> => {
     if (!process.env.API_KEY) throw new Error("Internal Error Occurred");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -213,7 +227,6 @@ export const generateImage = async (prompt: string, aspectRatio: string = "1:1")
             },
         });
 
-        // Find the image part, do not assume it is the first part.
         if (response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts) {
             for (const part of response.candidates[0].content.parts) {
                 if (part.inlineData) {
