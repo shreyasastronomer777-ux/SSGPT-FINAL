@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { type Part } from '@google/genai';
 import GeneratorForm from './components/GeneratorForm';
@@ -8,7 +7,7 @@ import ChatbotInterface from './components/ChatbotInterface';
 import MyPapers from './components/MyPapers';
 import Settings from './components/Settings';
 import { type FormData, type QuestionPaperData, type User, type Page, type Theme, UploadedImage } from './types';
-import { generateQuestionPaper, RateLimitError } from './services/geminiService';
+import { generateQuestionPaper } from './services/geminiService';
 import { generateHtmlFromPaperData } from './services/htmlGenerator';
 import { authService } from './services/authService';
 import PublicLandingPage from './components/PublicLandingPage';
@@ -43,9 +42,10 @@ function App() {
   const [textToAnalyze, setTextToAnalyze] = useState<string | null>(null);
   const [imagesToAnalyze, setImagesToAnalyze] = useState<Part[] | null>(null);
   const [publicPaper, setPublicPaper] = useState<QuestionPaperData | null>(null);
-  
-  // New State for Image Editor
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<UploadedImage | null>(null);
+
+  // Unified state for header actions to ensure immediate rendering upon editor readiness
+  const [editorActionsState, setEditorActionsState] = useState<any>(undefined);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('ssgpt-theme') as Theme;
@@ -65,7 +65,7 @@ function App() {
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         } catch (error) {
           console.error("Failed to load paper from URL hash:", error);
-          alert("The shared paper link is invalid or corrupted.");
+          alert("Internal Error Occurred");
           history.replaceState(null, document.title, window.location.pathname + window.location.search);
         }
       }
@@ -132,22 +132,14 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
-  // Wrapper to handle execution and error catching
   const executeGeneration = async (action: () => Promise<void>) => {
       setIsLoading(true);
       setError(null);
-
       try {
           await action();
       } catch (e) {
           console.error(e);
-          let errorMessage = 'An unknown error occurred. Please try again.';
-          if (e instanceof RateLimitError) {
-              errorMessage = e.message;
-          } else if (e instanceof Error) {
-              errorMessage = e.message;
-          }
-          setError(errorMessage);
+          setError('Internal Error Occurred');
       } finally {
           setIsLoading(false);
       }
@@ -155,7 +147,7 @@ function App() {
 
   const handleGenerate = useCallback((formData: FormData) => {
     setActivePaper(null);
-    
+    setEditorActionsState(undefined);
     executeGeneration(async () => {
         const paper = await generateQuestionPaper(formData);
         const finalPaper: QuestionPaperData = {
@@ -174,21 +166,18 @@ function App() {
   }, [currentUser]);
 
   const handleAnalysisComplete = (paper: QuestionPaperData) => {
-    // Analysis usually happens in a sub-component, but we handle the transition here
     setIsLoading(true);
     setError(null);
-
+    setEditorActionsState(undefined);
     const finalPaper: QuestionPaperData = {
         ...paper,
         schoolLogo: currentUser?.schoolLogo,
     };
-    
     if (finalPaper.schoolLogo) {
         finalPaper.htmlContent = generateHtmlFromPaperData(finalPaper, {
             logoConfig: { src: finalPaper.schoolLogo, alignment: 'center' }
         });
     }
-
     setActivePaper(finalPaper);
     if(currentUser?.role === 'teacher') {
       authService.savePaper(finalPaper);
@@ -206,76 +195,79 @@ function App() {
   
   const handleExitEditor = () => {
       setActivePaper(null);
+      setEditorActionsState(undefined);
       setPage(currentUser?.role === 'teacher' ? 'myPapers' : 'studentDashboard');
   };
   
   const handleEditPaper = (paper: QuestionPaperData) => {
       setActivePaper(paper);
+      setEditorActionsState(undefined);
       setPage('edit');
   };
   
   const handleDeletePaper = (paperId: string) => {
-      if(window.confirm("Are you sure you want to delete this paper? This action cannot be undone.")) {
+      if(window.confirm("Are you sure you want to delete this paper?")) {
           authService.deletePaper(paperId);
           setPapers(prevPapers => prevPapers.filter(p => p.id !== paperId));
       }
   };
 
-    const handleRenamePaper = (paperId: string, newSubject: string) => {
-        const paperToRename = papers.find(p => p.id === paperId);
-        if (paperToRename) {
-            const updatedPaper = { ...paperToRename, subject: newSubject };
-            const logoConfig = paperToRename.schoolLogo ? { src: paperToRename.schoolLogo, alignment: 'center' as const } : undefined;
-            updatedPaper.htmlContent = generateHtmlFromPaperData(updatedPaper, { logoConfig });
-            authService.savePaper(updatedPaper);
-            setPapers(authService.getPapers());
-        }
-    };
+  const handleRenamePaper = (paperId: string, newSubject: string) => {
+      const paperToRename = papers.find(p => p.id === paperId);
+      if (paperToRename) {
+          const updatedPaper = { ...paperToRename, subject: newSubject };
+          const logoConfig = paperToRename.schoolLogo ? { src: paperToRename.schoolLogo, alignment: 'center' as const } : undefined;
+          updatedPaper.htmlContent = generateHtmlFromPaperData(updatedPaper, { logoConfig });
+          authService.savePaper(updatedPaper);
+          setPapers(authService.getPapers());
+      }
+  };
 
-    const handleDuplicatePaper = (paperId: string) => {
-        const paperToDuplicate = papers.find(p => p.id === paperId);
-        if (paperToDuplicate) {
-            const newPaper = {
-                ...paperToDuplicate,
-                id: `paper-${Date.now()}`,
-                subject: `${paperToDuplicate.subject} (Copy)`,
-                createdAt: new Date().toISOString(),
-            };
-            authService.savePaper(newPaper);
-            setPapers(authService.getPapers());
-        }
-    };
+  const handleDuplicatePaper = (paperId: string) => {
+      const paperToDuplicate = papers.find(p => p.id === paperId);
+      if (paperToDuplicate) {
+          const newPaper = {
+              ...paperToDuplicate,
+              id: `paper-${Date.now()}`,
+              subject: `${paperToDuplicate.subject} (Copy)`,
+              createdAt: new Date().toISOString(),
+          };
+          authService.savePaper(newPaper);
+          setPapers(authService.getPapers());
+      }
+  };
 
-    const handleStudentViewPaperFromUrl = (url: string) => {
-        if (!url.includes('#paper/')) {
-            alert("Invalid SSGPT paper link. Please paste the full link.");
-            return;
-        }
-        try {
-            const base64String = url.split('#paper/')[1];
-            const binaryString = atob(base64String);
-            const bytes = Uint8Array.from(binaryString, (char) => char.charCodeAt(0));
-            const jsonString = new TextDecoder().decode(bytes);
-            const paperData = JSON.parse(jsonString) as QuestionPaperData;
-            
-            authService.saveAttendedPaper(paperData);
-            setAttendedPapers(authService.getAttendedPapers());
-            setActivePaper(paperData);
-            setPage('edit');
-        } catch (e) {
-            console.error("Failed to process pasted link:", e);
-            alert("The provided paper link is invalid or corrupted.");
-        }
-    };
+  const handleStudentViewPaperFromUrl = (url: string) => {
+      if (!url.includes('#paper/')) {
+          alert("Internal Error Occurred");
+          return;
+      }
+      try {
+          const base64String = url.split('#paper/')[1];
+          const binaryString = atob(base64String);
+          const bytes = Uint8Array.from(binaryString, (char) => char.charCodeAt(0));
+          const jsonString = new TextDecoder().decode(bytes);
+          const paperData = JSON.parse(jsonString) as QuestionPaperData;
+          authService.saveAttendedPaper(paperData);
+          setAttendedPapers(authService.getAttendedPapers());
+          setActivePaper(paperData);
+          setEditorActionsState(undefined);
+          setPage('edit');
+      } catch (e) {
+          console.error("Failed to process pasted link:", e);
+          alert("Internal Error Occurred");
+      }
+  };
     
-    const handleViewAttendedPaper = (paper: QuestionPaperData) => {
-        setActivePaper(paper);
-        setPage('edit');
-    };
+  const handleViewAttendedPaper = (paper: QuestionPaperData) => {
+      setActivePaper(paper);
+      setEditorActionsState(undefined);
+      setPage('edit');
+  };
     
-    const handleEditImage = (image: UploadedImage) => {
-        setSelectedImageForEdit(image);
-    };
+  const handleEditImage = (image: UploadedImage) => {
+      setSelectedImageForEdit(image);
+  };
 
   const handleNavigate = (targetPage: Page) => {
     if (isLoading) return;
@@ -283,6 +275,7 @@ function App() {
     if (targetPage !== 'edit') {
         setActivePaper(null);
         setEditorReady(false);
+        setEditorActionsState(undefined);
     }
     if (targetPage !== 'analyze') {
         setTextToAnalyze(null);
@@ -303,7 +296,25 @@ function App() {
     handleNavigate('analyze');
   };
   
-  const editorRef = React.useRef<any>(null);
+  const editorRef = useRef<any>(null);
+
+  const handleEditorReady = useCallback(() => {
+      setEditorReady(true);
+      if (editorRef.current) {
+          setEditorActionsState({
+              onSaveAndExit: editorRef.current.handleSaveAndExitClick,
+              onExport: editorRef.current.openExportModal,
+              onAnswerKey: editorRef.current.openAnswerKeyModal,
+              isSaving: false,
+              paperSubject: activePaper?.subject,
+              undo: editorRef.current.undo,
+              redo: editorRef.current.redo,
+              canUndo: editorRef.current.canUndo,
+              canRedo: editorRef.current.canRedo,
+              isAnswerKeyMode: editorRef.current.isAnswerKeyMode
+          });
+      }
+  }, [activePaper]);
 
   if (isAuthLoading) {
     return (
@@ -328,104 +339,9 @@ function App() {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
-  // Handle the Pro Image Editor Modal
   if (selectedImageForEdit) {
       return <ProImageEditor image={selectedImageForEdit} onClose={() => setSelectedImageForEdit(null)} />;
   }
-
-  const renderContent = () => {
-    if (isLoading) {
-        return <div className="flex items-center justify-center flex-1"><Loader /></div>;
-    }
-    if (error) {
-      return (
-        <div className="flex items-center justify-center flex-1">
-          <div className="text-center max-w-lg mx-auto p-8 bg-white dark:bg-slate-800 rounded-xl shadow-xl border dark:border-slate-700 animate-fade-in-up">
-            <h3 className="text-xl font-semibold text-red-500 mb-4">Operation Failed</h3>
-            <p className="text-slate-600 dark:text-slate-400 mb-6 whitespace-pre-wrap">{error}</p>
-            <button
-              onClick={() => {
-                setError(null);
-                handleNavigate(currentUser.role === 'teacher' ? 'generate' : 'practice');
-              }}
-              className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700"
-            >
-              Try Again
-            </button>
-          </div>
-        </div>
-      );
-    }
-    
-    // Teacher pages
-    if(currentUser.role === 'teacher') {
-        switch (page) {
-          case 'teacherDashboard':
-            return <TeacherDashboard user={currentUser} papers={papers} onNavigate={handleNavigate} onEditPaper={handleEditPaper} onRenamePaper={handleRenamePaper} onDuplicatePaper={handleDuplicatePaper} onDeletePaper={handleDeletePaper}/>;
-          case 'creationHub':
-            return <CreationHub onNavigate={handleNavigate} onStartAnalysis={handleStartAnalysis} onStartImageAnalysis={handleStartImageAnalysis} />;
-          case 'generate':
-            return <GeneratorForm onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />;
-          case 'analyze':
-            if (textToAnalyze) return <AnalysisScreen textToAnalyze={textToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
-            if (imagesToAnalyze) return <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} />;
-            handleNavigate('creationHub'); return null;
-          case 'edit':
-            if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={() => setEditorReady(true)} />;
-            handleNavigate('myPapers'); return null;
-          case 'myPapers':
-            return <MyPapers user={currentUser} papers={papers} onEdit={handleEditPaper} onDelete={handleDeletePaper} onGenerateNew={() => handleNavigate('creationHub')} onRename={handleRenamePaper} onDuplicate={handleDuplicatePaper} />;
-          case 'questionBank':
-            return <QuestionBank />;
-          case 'chat':
-            return <ChatbotInterface onGenerate={handleGenerate} />;
-          case 'settings':
-            return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
-          case 'gallery':
-            return <ImageGallery onEditImage={handleEditImage} />;
-          default:
-            return <TeacherDashboard user={currentUser} papers={papers} onNavigate={handleNavigate} onEditPaper={handleEditPaper} onRenamePaper={handleRenamePaper} onDuplicatePaper={handleDuplicatePaper} onDeletePaper={handleDeletePaper} />;
-        }
-    }
-    
-    // Student pages
-    if(currentUser.role === 'student') {
-        switch (page) {
-            case 'studentDashboard':
-                return <StudentDashboard user={currentUser} onNavigate={handleNavigate} onViewPaperFromUrl={handleStudentViewPaperFromUrl} />;
-            case 'practice':
-                return <PracticeGenerator onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />;
-            case 'assignedPapers':
-                return <AssignedPapers />;
-            case 'attendedPapers':
-                return <AttendedPapers papers={attendedPapers} onViewPaper={handleViewAttendedPaper} />;
-            case 'edit':
-                if (activePaper) return <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={() => setEditorReady(true)} />;
-                handleNavigate('studentDashboard'); return null;
-            case 'settings':
-                return <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />;
-            case 'gallery':
-                return <ImageGallery onEditImage={handleEditImage} />;
-            default:
-                return <StudentDashboard user={currentUser} onNavigate={handleNavigate} onViewPaperFromUrl={handleStudentViewPaperFromUrl} />;
-        }
-    }
-    
-    return <div>Invalid user role.</div>
-  };
-
-  const editorActions = (page === 'edit' && editorRef.current) ? {
-      onSaveAndExit: editorRef.current.handleSaveAndExitClick,
-      onExport: editorRef.current.openExportModal,
-      onAnswerKey: editorRef.current.openAnswerKeyModal,
-      isSaving: editorRef.current.isSaving,
-      paperSubject: activePaper?.subject,
-      undo: editorRef.current.undo,
-      redo: editorRef.current.redo,
-      canUndo: editorRef.current.canUndo,
-      canRedo: editorRef.current.canRedo,
-      isAnswerKeyMode: editorRef.current.isAnswerKeyMode
-  } : undefined;
 
   const isEditorPage = page === 'edit';
 
@@ -435,7 +351,7 @@ function App() {
           <Header
               page={page}
               onNavigate={handleNavigate}
-              editorActions={editorActions} 
+              editorActions={editorActionsState} 
           />
       )}
       <AppLayout 
@@ -447,7 +363,40 @@ function App() {
         onLogout={handleLogout}
         isEditorPage={isEditorPage}
         >
-        {renderContent()}
+        {isLoading ? (
+            <div className="flex items-center justify-center flex-1 h-full"><Loader /></div>
+        ) : error ? (
+            <div className="flex items-center justify-center flex-1 p-8">
+              <div className="text-center max-w-lg mx-auto p-8 bg-white dark:bg-slate-800 rounded-xl shadow-xl border dark:border-slate-700 animate-fade-in-up">
+                <h3 className="text-xl font-semibold text-red-500 mb-4">Operation Failed</h3>
+                <p className="text-slate-600 dark:text-slate-400 mb-6 whitespace-pre-wrap">{error}</p>
+                <button onClick={() => { setError(null); handleNavigate(currentUser.role === 'teacher' ? 'generate' : 'practice'); }} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700">Try Again</button>
+              </div>
+            </div>
+        ) : currentUser.role === 'teacher' ? (
+            <>
+                {page === 'teacherDashboard' && <TeacherDashboard user={currentUser} papers={papers} onNavigate={handleNavigate} onEditPaper={handleEditPaper} onRenamePaper={handleRenamePaper} onDuplicatePaper={handleDuplicatePaper} onDeletePaper={handleDeletePaper}/>}
+                {page === 'creationHub' && <CreationHub onNavigate={handleNavigate} onStartAnalysis={handleStartAnalysis} onStartImageAnalysis={handleStartImageAnalysis} />}
+                {page === 'generate' && <GeneratorForm onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />}
+                {page === 'analyze' && (textToAnalyze ? <AnalysisScreen textToAnalyze={textToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} /> : imagesToAnalyze ? <AnalysisScreen imagesToAnalyze={imagesToAnalyze} onComplete={handleAnalysisComplete} onCancel={() => handleNavigate('creationHub')} /> : null)}
+                {page === 'edit' && activePaper && <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={handleSavePaper} onSaveAndExit={handleExitEditor} onReady={handleEditorReady} />}
+                {page === 'myPapers' && <MyPapers user={currentUser} papers={papers} onEdit={handleEditPaper} onDelete={handleDeletePaper} onGenerateNew={() => handleNavigate('creationHub')} onRename={handleRenamePaper} onDuplicate={handleDuplicatePaper} />}
+                {page === 'questionBank' && <QuestionBank />}
+                {page === 'chat' && <ChatbotInterface onGenerate={handleGenerate} />}
+                {page === 'settings' && <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />}
+                {page === 'gallery' && <ImageGallery onEditImage={handleEditImage} />}
+            </>
+        ) : (
+            <>
+                {page === 'studentDashboard' && <StudentDashboard user={currentUser} onNavigate={handleNavigate} onViewPaperFromUrl={handleStudentViewPaperFromUrl} />}
+                {page === 'practice' && <PracticeGenerator onSubmit={handleGenerate} isLoading={isLoading} user={currentUser} />}
+                {page === 'assignedPapers' && <AssignedPapers />}
+                {page === 'attendedPapers' && <AttendedPapers papers={attendedPapers} onViewPaper={handleViewAttendedPaper} />}
+                {page === 'edit' && activePaper && <Editor ref={editorRef} key={activePaper.id} paperData={activePaper} onSave={() => {}} onSaveAndExit={() => handleNavigate('studentDashboard')} onReady={handleEditorReady} />}
+                {page === 'settings' && <Settings user={currentUser} theme={theme} toggleTheme={toggleTheme} onLogout={handleLogout} />}
+                {page === 'gallery' && <ImageGallery onEditImage={handleEditImage} />}
+            </>
+        )}
       </AppLayout>
     </div>
   );
